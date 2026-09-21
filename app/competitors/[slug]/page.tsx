@@ -4,7 +4,9 @@ import { notFound } from "next/navigation";
 import { FeedRow } from "../../_components/feed-row";
 import { Logo } from "../../_components/logo";
 import { Empty, Panel } from "../../_components/panel";
+import { SetupNeeded } from "../../_components/setup-needed";
 import { Stat } from "../../_components/stat";
+import { missingEnv, missingIngestEnv } from "@/lib/config";
 import { DASH, fullDate, int, pct, shortDate, signed } from "@/lib/format";
 import { supabaseAdmin } from "@/lib/supabase";
 import type {
@@ -31,6 +33,12 @@ export default async function CompetitorPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+
+  const missing = missingEnv();
+  if (missing.length > 0) {
+    return <SetupNeeded missing={missing} missingIngest={missingIngestEnv()} />;
+  }
+
   const db = supabaseAdmin();
 
   const { data: row } = await db.from("competitors").select("*").eq("slug", slug).maybeSingle();
