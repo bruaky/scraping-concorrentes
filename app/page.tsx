@@ -1,111 +1,91 @@
-import Link from "next/link";
-
-import { EventCard, formatDate } from "./_components/event-card";
+import { CompetitorRail } from "./_components/competitor-rail";
+import { EventRow } from "./_components/event-row";
+import { Empty, Panel } from "./_components/panel";
+import { Scoreboard } from "./_components/scoreboard";
+import { fullDate } from "@/lib/format";
 import { supabaseAdmin } from "@/lib/supabase";
-import type { ChangeEvent, Competitor, Run } from "@/lib/database.types";
+import type { ChangeEvent, Competitor, CompetitorWeeklyStats, Run } from "@/lib/database.types";
 
-// Server component: le o Supabase com a service role key direto, sem expor
-// nada ao browser. Renderiza sob demanda para que o build nao precise das
-// credenciais e para que a timeline reflita o ultimo ingest.
+// Server component: le o Supabase com a service role key, sem expor nada ao
+// browser. Renderiza sob demanda para o build nao precisar das credenciais.
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const db = supabaseAdmin();
 
-  const [competitorsRes, eventsRes, runsRes] = await Promise.all([
+  const [competitorsRes, eventsRes, statsRes, runRes] = await Promise.all([
     db.from("competitors").select("*").eq("is_active", true).order("name"),
-    db.from("change_events").select("*").order("occurred_at", { ascending: false }).limit(50),
-    db.from("runs").select("*").order("started_at", { ascending: false }).limit(2),
+    db.from("change_events").select("*").order("occurred_at", { ascending: false }).limit(60),
+    db.from("competitor_weekly_stats").select("*"),
+    db.from("runs").select("*").order("started_at", { ascending: false }).limit(1),
   ]);
 
   const competitors = (competitorsRes.data ?? []) as Competitor[];
   const events = (eventsRes.data ?? []) as ChangeEvent[];
-  const runs = (runsRes.data ?? []) as Run[];
+  const stats = (statsRes.data ?? []) as CompetitorWeeklyStats[];
+  const lastRun = ((runRes.data ?? []) as Run[])[0];
 
   const byId = new Map(competitors.map((c) => [c.id, c]));
-  const countByCompetitor = events.reduce<Record<string, number>>((acc, e) => {
-    acc[e.competitor_id] = (acc[e.competitor_id] ?? 0) + 1;
-    return acc;
-  }, {});
 
-  const lastRun = runs[0];
+  // Semana 1 e toda "new": sem baseline nao existe comparacao, e o feed vazio
+  // precisa dizer isso em vez de parecer quebrado.
+  const baselineOnly = stats.length > 0 && stats.every((s) => !s.has_comparison);
+  const trackingSince = stats
+    .map((s) => s.tracking_since)
+    .filter((d): d is string => d !== null)
+    .sort()[0];
 
   return (
-    <main className="space-y-10">
-      <header>
-        <h1 className="text-2xl font-semibold">Hakutaku CI</h1>
-        <p className="mt-1 text-sm text-[--color-muted]">
-          Site e Instagram dos concorrentes, varridos toda segunda-feira.
-          {lastRun
-            ? ` Última execução: ${formatDate(lastRun.started_at)} (${lastRun.status}).`
-            : " Nenhuma execução registrada ainda."}
-        </p>
-      </header>
+    <div className="space-y-12">
+      <CompetitorRail competitors={competitors} />
 
-      <section>
-        <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">
-          Concorrentes
-        </h2>
-        {competitors.length === 0 ? (
-          <EmptyState>
+      {competitors.length === 0 ? (
+        <Panel>
+          <Empty>
             Nenhum concorrente cadastrado. Insira linhas em <code>competitors</code> e{" "}
-            <code>sources</code> no Supabase para começar.
-          </EmptyState>
+            <code>sources</code> no Supabase para começar — o README tem o SQL.
+          </Empty>
+        </Panel>
+      ) : null}
+
+      <Panel
+        title="O que mudou"
+        bare
+        action={
+          lastRun ? (
+            <span className="text-xs text-muted">
+              Última coleta {fullDate(lastRun.started_at)}
+            </span>
+          ) : null
+        }
+      >
+        {events.length === 0 ? (
+          <Empty>
+            {baselineOnly && trackingSince ? (
+              <>
+                Baseline coletado em {fullDate(trackingSince)}.
+                <br />A comparação começa na próxima coleta — até lá não há o que comparar.
+              </>
+            ) : (
+              <>
+                Nada detectado ainda. Dispare a coleta com <code>POST /api/cron/weekly</code>.
+              </>
+            )}
+          </Empty>
         ) : (
-          <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {competitors.map((c) => (
-              <li key={c.id}>
-                <Link
-                  href={`/competitors/${c.slug}`}
-                  className="block rounded-lg border border-[--color-edge] bg-[--color-panel] p-4 transition hover:border-slate-600"
-                >
-                  <p className="font-medium">{c.name}</p>
-                  <p className="mt-1 text-xs text-[--color-muted]">
-                    {c.website ? new URL(c.website).host : "sem site"}
-                    {c.instagram ? ` · @${c.instagram}` : ""}
-                  </p>
-                  <p className="mt-3 text-xs text-sky-400">
-                    {countByCompetitor[c.id] ?? 0} eventos recentes
-                  </p>
-                </Link>
-              </li>
+          <ul>
+            {events.map((event) => (
+              <EventRow key={event.id} event={event} competitor={byId.get(event.competitor_id)} />
             ))}
           </ul>
         )}
-      </section>
+      </Panel>
 
-      <section>
-        <h2 className="text-sm font-medium uppercase tracking-wide text-[--color-muted]">
-          Timeline
-        </h2>
-        {events.length === 0 ? (
-          <EmptyState>
-            Nada detectado ainda. Dispare o ingest manualmente com{" "}
-            <code>POST /api/cron/weekly</code>.
-          </EmptyState>
-        ) : (
-          <div className="mt-3 space-y-3">
-            {events.map((event) => {
-              const c = byId.get(event.competitor_id);
-              return (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  competitor={c ? { slug: c.slug, name: c.name } : null}
-                />
-              );
-            })}
-          </div>
-        )}
-      </section>
-    </main>
-  );
-}
-
-function EmptyState({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="mt-3 rounded-lg border border-dashed border-[--color-edge] p-6 text-sm text-[--color-muted]">
-      {children}
-    </p>
+      {stats.length > 0 ? (
+        <Panel title="Placar da semana" bare>
+          <Scoreboard rows={stats} />
+        </Panel>
+      ) : null}
+    </div>
   );
 }
