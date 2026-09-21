@@ -1,10 +1,16 @@
 import { CompetitorRail } from "./_components/competitor-rail";
-import { EventRow } from "./_components/event-row";
+import { FeedRow } from "./_components/feed-row";
 import { Empty, Panel } from "./_components/panel";
 import { Scoreboard } from "./_components/scoreboard";
 import { fullDate } from "@/lib/format";
 import { supabaseAdmin } from "@/lib/supabase";
-import type { ChangeEvent, Competitor, CompetitorWeeklyStats, Run } from "@/lib/database.types";
+import type {
+  CollectionRun,
+  Competitor,
+  DashboardFeedRow,
+  DashboardScoreboardRow,
+  TrackingReadinessRow,
+} from "@/lib/database.types";
 
 // Server component: le o Supabase com a service role key, sem expor nada ao
 // browser. Renderiza sob demanda para o build nao precisar das credenciais.
@@ -13,25 +19,27 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const db = supabaseAdmin();
 
-  const [competitorsRes, eventsRes, statsRes, runRes] = await Promise.all([
+  const [competitorsRes, feedRes, scoreboardRes, readinessRes, runRes] = await Promise.all([
     db.from("competitors").select("*").eq("is_active", true).order("name"),
-    db.from("change_events").select("*").order("occurred_at", { ascending: false }).limit(60),
-    db.from("competitor_weekly_stats").select("*"),
-    db.from("runs").select("*").order("started_at", { ascending: false }).limit(1),
+    // Nivel 1: a tela inicial le SO esta view.
+    db.from("v_dashboard_feed").select("*").limit(60),
+    db.from("v_dashboard_scoreboard").select("*"),
+    db.from("v_tracking_readiness").select("*"),
+    db.from("collection_runs").select("*").order("started_at", { ascending: false }).limit(1),
   ]);
 
   const competitors = (competitorsRes.data ?? []) as Competitor[];
-  const events = (eventsRes.data ?? []) as ChangeEvent[];
-  const stats = (statsRes.data ?? []) as CompetitorWeeklyStats[];
-  const lastRun = ((runRes.data ?? []) as Run[])[0];
+  const feed = (feedRes.data ?? []) as DashboardFeedRow[];
+  const scoreboard = (scoreboardRes.data ?? []) as DashboardScoreboardRow[];
+  const readiness = (readinessRes.data ?? []) as TrackingReadinessRow[];
+  const lastRun = ((runRes.data ?? []) as CollectionRun[])[0];
 
-  const byId = new Map(competitors.map((c) => [c.id, c]));
+  const logoBySlug = new Map(competitors.map((c) => [c.slug, c.logo_url]));
 
-  // Semana 1 e toda "new": sem baseline nao existe comparacao, e o feed vazio
-  // precisa dizer isso em vez de parecer quebrado.
-  const baselineOnly = stats.length > 0 && stats.every((s) => !s.has_comparison);
-  const trackingSince = stats
-    .map((s) => s.tracking_since)
+  // Semana 1 e toda 'new'. Sem isso o primeiro acesso parece quebrado.
+  const allBaseline = readiness.length > 0 && readiness.every((r) => r.status === "baseline");
+  const since = readiness
+    .map((r) => r.primeiro_scrape)
     .filter((d): d is string => d !== null)
     .sort()[0];
 
@@ -42,8 +50,8 @@ export default async function DashboardPage() {
       {competitors.length === 0 ? (
         <Panel>
           <Empty>
-            Nenhum concorrente cadastrado. Insira linhas em <code>competitors</code> e{" "}
-            <code>sources</code> no Supabase para começar — o README tem o SQL.
+            Nenhum concorrente cadastrado. A migration <code>0001</code> já semeia os 12 — se
+            esta lista está vazia, ela ainda não foi aplicada.
           </Empty>
         </Panel>
       ) : null}
@@ -55,16 +63,18 @@ export default async function DashboardPage() {
           lastRun ? (
             <span className="text-xs text-muted">
               Última coleta {fullDate(lastRun.started_at)}
+              {lastRun.status !== "success" ? ` · ${lastRun.status}` : ""}
             </span>
           ) : null
         }
       >
-        {events.length === 0 ? (
+        {feed.length === 0 ? (
           <Empty>
-            {baselineOnly && trackingSince ? (
+            {allBaseline && since ? (
               <>
-                Baseline coletado em {fullDate(trackingSince)}.
-                <br />A comparação começa na próxima coleta — até lá não há o que comparar.
+                Baseline coletado em {fullDate(since)}.
+                <br />
+                A comparação começa na próxima coleta — até lá não há o que comparar.
               </>
             ) : (
               <>
@@ -74,16 +84,20 @@ export default async function DashboardPage() {
           </Empty>
         ) : (
           <ul>
-            {events.map((event) => (
-              <EventRow key={event.id} event={event} competitor={byId.get(event.competitor_id)} />
+            {feed.map((event) => (
+              <FeedRow
+                key={event.id}
+                event={event}
+                logoUrl={logoBySlug.get(event.competitor_slug) ?? null}
+              />
             ))}
           </ul>
         )}
       </Panel>
 
-      {stats.length > 0 ? (
+      {scoreboard.length > 0 ? (
         <Panel title="Placar da semana" bare>
-          <Scoreboard rows={stats} />
+          <Scoreboard rows={scoreboard} />
         </Panel>
       ) : null}
     </div>

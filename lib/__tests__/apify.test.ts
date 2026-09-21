@@ -1,25 +1,26 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { hideable } from "../apify";
+import { num } from "../apify";
 
-test("-1 do Apify vira desconhecido, nao zero", () => {
-  // Esse e o bug que mais silenciosamente estraga o painel: a conta esconde
-  // curtidas, o Apify manda -1, e se isso virar 0 a media de engajamento
-  // despenca e a gente le como queda real.
-  assert.equal(hideable(-1), null);
+/**
+ * O schema guarda likes_count CRU e normaliza nas views. Estes testes
+ * fixam essa direcao: se alguem "consertar" a coercao para zerar o -1 aqui,
+ * o dado bruto perde a distincao entre escondido e ausente, e as views
+ * passam a normalizar um valor que ja veio adulterado.
+ */
+
+test("-1 chega ao banco como -1, nao como zero nem null", () => {
+  assert.equal(num(-1), -1);
 });
 
 test("zero de verdade continua zero", () => {
-  assert.equal(hideable(0), 0);
+  assert.equal(num(0), 0);
 });
 
-test("valor normal passa direto", () => {
-  assert.equal(hideable(1234), 1234);
-});
-
-test("ausente continua ausente", () => {
-  assert.equal(hideable(undefined), null);
-  assert.equal(hideable(null), null);
-  assert.equal(hideable("100"), null);
+test("ausente vira null", () => {
+  assert.equal(num(undefined), null);
+  assert.equal(num(null), null);
+  assert.equal(num("1000"), null);
+  assert.equal(num(Number.NaN), null);
 });

@@ -1,85 +1,143 @@
 # hakutaku
 
-Monitoramento semanal de concorrentes: varre o site (Firecrawl) e o Instagram
-(Apify), guarda os dados brutos no Supabase e transforma as diferenças numa
+Inteligência competitiva: varre as páginas dos concorrentes (Firecrawl) e o
+Instagram (Apify), guarda tudo no Supabase e transforma as diferenças numa
 timeline de eventos.
 
 ## As três telas
 
-**Nível 1 — o que mudou essa semana.** É a tela que abre. Feed cronológico lendo
-só `change_events`, com severidade por cor: preço e proposta de valor em
-vermelho, vagas e mudança estrutural em amarelo, post e blog em cinza. Sem isso
-o feed vira ruído em três semanas. A cor nunca aparece sozinha — vem sempre
-colada ao rótulo do tipo.
+**Nível 1 — o que mudou essa semana.** A tela que abre. Feed cronológico lendo
+só `v_dashboard_feed`, com severidade por cor: `high` vermelho (preço,
+proposta de valor), `notable` amarelo (vagas, mudança estrutural), `info`
+cinza (post, blog). A cor nunca aparece sozinha — vem sempre colada ao rótulo
+do tipo, porque no fundo claro o amarelo fica abaixo de 3:1 de contraste.
 
-**Nível 2 — placar comparativo.** Uma linha por concorrente, ordenável por
-qualquer coluna: seguidores, Δ7d, posts, engajamento médio, ER %, blog 7d,
-vagas, preço. Δ e ER são o que respondem "quem está acelerando".
+**Nível 2 — placar comparativo.** `v_dashboard_scoreboard`, uma linha por
+concorrente, ordenável por qualquer coluna. Desconhecido vai sempre para o fim
+da ordenação, em qualquer direção.
 
-**Nível 3 — drill-down.** Ao clicar num concorrente: métricas principais e uma
-timeline única misturando web e Instagram no mesmo eixo de tempo. É aqui que
-aparece a correlação que justifica o sistema — "mudaram o pricing na semana que
-abriram 4 vagas de vendas".
+**Nível 3 — drill-down.** `v_competitor_timeline`, misturando web e Instagram
+no mesmo eixo de tempo. É aqui que aparece a correlação que justifica o
+sistema: pricing mexido na mesma semana de quatro vagas de vendas.
 
-O overview de todos os concorrentes (logo + nome, clicável) fica fixo no topo.
+Overview de todos os concorrentes (logo + nome, clicável) fixo no topo. Sem
+logo, monograma com as iniciais.
+
+## Arquitetura
+
+```
+Firecrawl Monitor  ──webhook──┐
+(agenda + e-mail com diffs)   │
+                              ▼
+Vercel Cron ──────────►  /api/ingest/*  ──►  Supabase  ──►  views  ──►  dashboard
+(rede de segurança)      grava dados crus      │
+                                               └──► fn_generate_change_events(run_id)
+```
+
+O Monitor agenda e manda o e-mail; quando termina uma verificação, chama
+`/api/webhooks/firecrawl-monitor`, que dispara a nossa coleta. Os targets do
+Monitor são queries de busca, não as URLs de `tracked_pages` — por isso ele é
+o gatilho, e quem coleta continua sendo o nosso ingest, que é o que sustenta
+placar e timeline.
+
+A decisão do que vira alerta mora em SQL (`fn_generate_change_events`), perto
+dos dados. A aplicação grava o cru e dispara a função.
 
 ## Estrutura
 
 ```
 app/
-  page.tsx                     Níveis 1 e 2
-  competitors/[slug]/page.tsx  Nível 3
-  _components/                 rail, feed, placar, tiles
+  page.tsx                              Níveis 1 e 2
+  competitors/[slug]/page.tsx           Nível 3
+  _components/                          rail, feed, placar, tiles
   api/
-    cron/weekly/route.ts       disparado pelo Vercel Cron
-    ingest/firecrawl/route.ts  scrape + changeTracking
-    ingest/instagram/route.ts  perfil + posts
+    cron/weekly/route.ts                Vercel Cron
+    ingest/firecrawl/route.ts           tracked_pages → page_scrapes/diffs/fields
+    ingest/instagram/route.ts           perfil + posts + métricas
+    webhooks/firecrawl-monitor/route.ts gatilho do Monitor
 lib/
   supabase.ts       client service-role, SÓ server
-  firecrawl.ts      scrape + changeTracking (git-diff e json)
-  apify.ts          perfil + posts, com as coerções que importam
-  extract.ts        schema de extração por tipo de página
-  events.ts         detecção de mudança → change_events
-  sources.ts        seleção de fontes
+  firecrawl.ts      scrape configurado por tracked_pages
+  apify.ts          perfil + posts, valores CRUS
+  runs.ts           collection_runs + fn_generate_change_events
+  pipeline.ts       orquestra as rotas de ingest
   format.ts         formatação (ausência nunca vira zero)
-  __tests__/        24 testes das regras acima
+scripts/
+  create-monitor.ts npm run monitor:setup
 supabase/migrations/
-  0001_competitive_intel.sql   schema
-  0002_scoreboard_view.sql     view do placar
+  0001_competitive_intel.sql  schema (verbatim, como aplicado)
+  0002_dashboard_views.sql    views + fn_generate_change_events (verbatim)
+  0003_dashboard_fixes.sql    correções — ver abaixo
 ```
 
-## As regras que quebram o dashboard se ignoradas
+`0001` e `0002` estão verbatim de propósito, para poderem ser diferenciados
+contra o que está no Supabase. Migration é append-only: tudo que muda
+comportamento está em `0003`.
 
-Estão codificadas, não só documentadas — cada uma tem teste ou constraint.
+## O que a 0003 corrige
 
-**Engajamento precisa de denominador.** Curtida absoluta compara mal: quem tem
-mais seguidores sempre vence. ER = (curtidas + comentários) ÷ seguidores, na
-view `competitor_weekly_stats`.
+Cada item foi reproduzido contra um Postgres 16 antes e depois.
 
-**`likesCount = -1` não é zero.** É a conta escondendo curtidas. `lib/apify.ts`
-normaliza para `null` na entrada, uma constraint no banco garante que -1 nunca
-é gravado, e a view tira esses posts da média em vez de contá-los como zero —
-senão a média despenca e lemos como queda de engajamento. O placar marca com
-`*` quantos posts ficaram de fora.
+**Engajamento tratava curtida escondida como zero.** `engagement` fazia
+`coalesce(nullif(likes,-1), 0)`, então o post entrava na média valendo só os
+comentários. Com um post de 1.000 curtidas + 50 comentários e outro de
+curtidas ocultas + 50 comentários, a view reportava média 550 e ER 5,5% —
+o correto é 1.050 e 10,5%. Quem esconde curtidas aparecia com metade do
+engajamento real. Agora `engagement` é NULL quando as curtidas são
+desconhecidas (o `avg` ignora NULL sozinho), e `posts_unknown_likes` diz
+quantos ficaram de fora.
 
-**Views em post de imagem é ausência, não zero.** `video_play_count` e
-`video_view_count` ficam `null`; a célula aparece vazia, nunca "0 views".
+**`followers_delta_7d` não era de 7 dias.** Usava o snapshot imediatamente
+anterior. Com cron semanal coincide; no primeiro disparo manual vira "delta
+desde alguns minutos atrás" sob um rótulo que promete uma semana. Agora são
+duas colunas: `followers_delta_7d` (captura com 7+ dias) e
+`followers_delta_since_last`.
 
-**Semana 1 é toda `new`.** A primeira captura de cada fonte é baseline e não
-gera evento — um feed com 40 cards de "página nova" é ruído. Enquanto não
-existe snapshot com 7+ dias, `has_comparison` é `false` e a tela mostra
-"baseline coletado, a comparação começa dia X" em vez de um delta falso de zero.
+**`page_hidden` e `page_removed` re-disparavam toda semana.** O `ref` do
+dedupe é o id do scrape, e cada run cria um scrape novo. Uma página aposentada
+virava um card amarelo no feed para sempre. Agora só emite na transição —
+verificado: 1 evento quando fica oculta, 0 nas semanas seguintes.
 
-**`changeStatus` ausente não é "não mudou".** O Firecrawl pode devolver sem
-`changeTracking` quando dá timeout no lookup. Nesse caso `change_status` fica
-`null`, o aviso vai para `tracking_warning` e nenhum evento é emitido.
+**As views eram `SECURITY DEFINER`.** View no Postgres nasce assim: roda com
+os privilégios do dono e ignora o RLS de quem consulta. Com RLS ligado e sem
+policies, um `grant select` abriria a base inteira para a anon key. Todas as
+nove views agora têm `security_invoker = true`.
 
-**Post fixado não é post da semana.** Reaparece em toda coleta; fica fora dos
-eventos e das médias.
+**`open_roles` era `text` num placar ordenável** — a ordem era `10 < 100 < 9`.
+Agora é inteiro, com cast seguro.
+
+**A função retornava só a contagem do passo 1.** `get diagnostics` lê o
+statement anterior; os passos 2–7 não somavam.
+
+**O passo do blog ignorava o `p_run_id`** e usava `now() - 1 hora`, o que
+quebra a idempotência por run. Agora escopa pelo início do run.
+
+Menores: `search_path` fixado na função (lint do Supabase); `nullif(x, null)`
+era no-op; o comentário sobre `sum()` retornar NULL estava invertido;
+`bio_link_changed` dizia "mudou a bio" quando só o link mudou; a timeline não
+mostrava páginas que ficaram ocultas.
+
+## Regras que valem repetir
+
+**`likes_count` é gravado CRU, com o `-1`.** A normalização mora nas views
+(`nullif(likes_count, -1)`). Normalizar na ingestão perderia a distinção entre
+"escondido" e "ausente" no dado bruto — e os testes em `lib/__tests__/`
+travam essa direção.
+
+**Views em post de imagem é ausência, não zero.** `video_*` fica NULL e a
+célula aparece vazia.
+
+**Semana 1 é toda `new`.** `v_tracking_readiness` distingue baseline de ativo,
+e a tela mostra "baseline coletado, a comparação começa em X" em vez de um
+delta falso de zero.
+
+**`change_status` nulo não é "não mudou".** Quando o Firecrawl não consegue
+comparar, o aviso vai para `page_scrapes.warning` e nenhum evento é emitido.
+
+**Post fixado não é post da semana.** Fica fora dos eventos e das médias.
 
 **Os números vêm da versão deslogada do Instagram** e podem ser menores do que
-o que se vê logado. Conta privada não expõe engajamento — quando `is_private`
-vira `true`, isso é um evento crítico e a coleta para.
+o que se vê logado. Conta privada não expõe engajamento.
 
 ## Setup
 
@@ -87,7 +145,7 @@ vira `true`, isso é um evento crítico e a coleta para.
 npm install
 cp .env.example .env.local   # preencha as chaves
 npm run dev
-npm test                     # regras de detecção e normalização
+npm test
 ```
 
 ### Banco
@@ -97,31 +155,44 @@ supabase link --project-ref <ref>
 supabase db push
 ```
 
-RLS fica ligado em todas as tabelas **sem policy nenhuma** — só a service role
-key (server-side) enxerga os dados.
+Se a `0001` já está aplicada no seu Supabase, só a `0003` é nova.
 
-### Cadastrando um concorrente
+### Cadastrando páginas
 
-O `page_type` não é rótulo livre: ele decide a extração estruturada que pedimos
-ao Firecrawl e a severidade do evento gerado.
+A `0001` já semeia os 12 concorrentes com `website` e `instagram_handle`
+nulos de propósito — preencher só depois de confirmar cada um. O ingest do
+Instagram pula quem não tem handle.
 
 ```sql
-insert into competitors (slug, name, website, instagram, logo_url)
-values ('acme', 'Acme', 'https://acme.com', 'acme', null);
+update competitors
+   set website = 'https://glean.com', instagram_handle = 'glean'
+ where slug = 'glean';
 
-insert into sources (competitor_id, kind, target, page_type)
-select id, 'website', 'https://acme.com',          'home'    from competitors where slug = 'acme'
-union all
-select id, 'website', 'https://acme.com/pricing',  'pricing' from competitors where slug = 'acme'
-union all
-select id, 'website', 'https://acme.com/blog',     'blog'    from competitors where slug = 'acme'
-union all
-select id, 'website', 'https://acme.com/careers',  'careers' from competitors where slug = 'acme'
-union all
-select id, 'instagram', 'acme',                    'other'   from competitors where slug = 'acme';
+insert into tracked_pages (competitor_id, url, page_type, diff_modes,
+                           extraction_prompt, extraction_schema)
+select id, 'https://glean.com/pricing', 'pricing', '{git-diff,json}',
+       'Extraia o valor mensal de cada plano.',
+       '{"type":"object","properties":{
+           "starter_price":{"type":["string","null"]},
+           "pro_price":{"type":["string","null"]},
+           "billing_cycle":{"type":["string","null"]}}}'::jsonb
+from competitors where slug = 'glean';
 ```
 
-`logo_url` é opcional — sem ele a UI usa um monograma com as iniciais.
+O schema de extração deve ser **plano**: cada campo escalar vira uma linha em
+`page_field_changes`, e o modo json do changeTracking entrega
+`previous`/`current` por campo. Para `careers`, use o campo
+`open_roles_count` — é o que o placar lê.
+
+### Firecrawl Monitor
+
+```bash
+npm run monitor:setup
+```
+
+Lê a lista de concorrentes do banco, cria (ou atualiza) o monitor com e-mail
+semanal e aponta o webhook para `/api/webhooks/firecrawl-monitor`. Rodar de
+novo depois de adicionar um concorrente.
 
 ### Disparo manual
 
@@ -129,15 +200,8 @@ select id, 'instagram', 'acme',                    'other'   from competitors wh
 curl -X POST http://localhost:3000/api/cron/weekly \
   -H "Authorization: Bearer $CRON_SECRET"
 
-# ou só um concorrente
 curl -X POST http://localhost:3000/api/ingest/firecrawl \
   -H "Authorization: Bearer $CRON_SECRET" \
   -H "Content-Type: application/json" \
-  -d '{"competitorSlug":"acme"}'
+  -d '{"competitorSlug":"glean"}'
 ```
-
-## Deploy na Vercel
-
-Configure as variáveis do `.env.example` no projeto. A Vercel injeta
-`CRON_SECRET` no header `Authorization` das chamadas agendadas — use o mesmo
-valor. `APP_BASE_URL` é opcional em produção.

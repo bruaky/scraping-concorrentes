@@ -1,47 +1,47 @@
 import "server-only";
 
-import type { ChangeStatus, PageType } from "./database.types";
-import { specFor } from "./extract";
+import type { ChangeStatus, Json, TrackedPage, Visibility } from "./database.types";
 
 /**
- * Wrapper fino sobre a API v2 do Firecrawl.
+ * Wrapper sobre a API v2 do Firecrawl.
  *
- * Pedimos tres coisas por scrape:
- *   markdown         — corpo da pagina, guardado pra auditoria
- *   json             — extracao estruturada por page_type (ver lib/extract.ts)
- *   changeTracking   — git-diff (o bloco do card, e de onde saem posts novos)
- *                      + json (previous/current por campo: preco antes → depois)
+ * A config do scrape mora em `tracked_pages`, nao aqui: tag, modos de diff,
+ * schema de extracao e scrape_options vem da linha. O Firecrawl exige
+ * consistencia de parametros entre scrapes da mesma URL — mudar isso no
+ * codigo invalidaria a serie de comparacao de todas as paginas de uma vez.
  *
  * Docs: https://docs.firecrawl.dev/features/change-tracking
  */
 
 const DEFAULT_API_URL = "https://api.firecrawl.dev";
 
-export type FieldDiff<T = unknown> = { previous: T | null; current: T | null };
-
-export type ChangeTracking = {
-  /**
-   * null = o Firecrawl NAO conseguiu comparar (timeout no lookup, ver
-   * `warning`). Isso e "desconhecido", nunca "same" — tratar como ausente.
-   */
-  changeStatus: ChangeStatus | null;
-  visibility: "visible" | "hidden" | null;
-  previousScrapeAt: string | null;
-  diffText: string | null;
-  diffJson: unknown | null;
-  /** { campo: { previous, current } } do modo json. */
-  fields: Record<string, FieldDiff> | null;
-};
+export type FieldDiff = { previous: string | null; current: string | null };
 
 export type Scrape = {
   url: string;
   markdown: string;
   title: string | null;
   description: string | null;
-  statusCode: number | null;
-  extracted: unknown | null;
-  tracking: ChangeTracking;
-  /** Aviso do Firecrawl (ex.: changeTracking indisponivel nesta chamada). */
+  httpStatus: number | null;
+
+  /**
+   * null = o Firecrawl NAO conseguiu comparar (timeout no lookup, ver
+   * `warning`). Desconhecido, nunca "same".
+   */
+  changeStatus: ChangeStatus | null;
+  visibility: Visibility | null;
+  previousScrapeAt: string | null;
+
+  diffText: string | null;
+  diffJson: unknown | null;
+  linesAdded: number | null;
+  linesRemoved: number | null;
+
+  /** Extracao do formato json. */
+  extracted: Record<string, unknown> | null;
+  /** { campo: { previous, current } } do modo json do changeTracking. */
+  fields: Record<string, FieldDiff> | null;
+
   warning: string | null;
   raw: unknown;
 };
@@ -59,29 +59,39 @@ function apiKey(): string {
 
 const VALID_STATUS: readonly string[] = ["new", "same", "changed", "removed"];
 
-/**
- * Faz o scrape de uma URL.
- *
- * `tag` isola o historico do changeTracking por source — duas fontes na mesma
- * URL nao se atrapalham.
- */
-export async function scrape(
-  url: string,
-  opts: { pageType?: PageType; tag?: string; timeoutMs?: number } = {},
+type PageConfig = Pick<
+  TrackedPage,
+  "url" | "firecrawl_tag" | "diff_modes" | "extraction_schema" | "extraction_prompt" | "scrape_options"
+>;
+
+export async function scrapePage(
+  page: PageConfig,
+  opts: { timeoutMs?: number } = {},
 ): Promise<Scrape> {
   const timeoutMs = opts.timeoutMs ?? 60_000;
-  const spec = opts.pageType ? specFor(opts.pageType) : null;
+  const schema = page.extraction_schema as Record<string, unknown> | null;
+  const usesJson = schema !== null && page.diff_modes.includes("json");
 
   const formats: unknown[] = ["markdown"];
-  if (spec) {
-    formats.push({ type: "json", prompt: spec.prompt, schema: spec.schema });
+
+  if (schema) {
+    formats.push({
+      type: "json",
+      ...(page.extraction_prompt ? { prompt: page.extraction_prompt } : {}),
+      schema,
+    });
   }
+
   formats.push({
     type: "changeTracking",
-    // O modo json so faz sentido com schema; sem ele, so git-diff.
-    modes: spec ? ["git-diff", "json"] : ["git-diff"],
-    ...(spec ? { prompt: spec.prompt, schema: spec.schema } : {}),
-    ...(opts.tag ? { tag: opts.tag } : {}),
+    modes: page.diff_modes,
+    tag: page.firecrawl_tag,
+    ...(usesJson
+      ? {
+          schema,
+          ...(page.extraction_prompt ? { prompt: page.extraction_prompt } : {}),
+        }
+      : {}),
   });
 
   const res = await fetch(apiUrl("/v2/scrape"), {
@@ -90,7 +100,13 @@ export async function scrape(
       Authorization: `Bearer ${apiKey()}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ url, formats, onlyMainContent: true, timeout: timeoutMs }),
+    body: JSON.stringify({
+      url: page.url,
+      formats,
+      timeout: timeoutMs,
+      // opcoes congeladas na linha de tracked_pages
+      ...((page.scrape_options as Record<string, unknown> | null) ?? {}),
+    }),
     signal: AbortSignal.timeout(timeoutMs + 15_000),
   });
 
@@ -100,7 +116,7 @@ export async function scrape(
     warning?: string;
     data?: {
       markdown?: string;
-      json?: unknown;
+      json?: Record<string, unknown>;
       warning?: string;
       changeTracking?: {
         changeStatus?: string;
@@ -120,44 +136,70 @@ export async function scrape(
 
   if (!res.ok || !body.success || !body.data) {
     throw new Error(
-      `Firecrawl falhou em ${url}: ${res.status} ${body.error ?? "sem detalhe"}`,
+      `Firecrawl falhou em ${page.url}: ${res.status} ${body.error ?? "sem detalhe"}`,
     );
   }
 
   const data = body.data;
   const ct = data.changeTracking;
-  const warning = data.warning ?? body.warning ?? null;
 
-  // Um changeStatus que nao reconhecemos vira null (desconhecido), nao 'same'.
-  const status =
+  // Status que nao reconhecemos vira null (desconhecido), nunca 'same'.
+  const changeStatus =
     ct?.changeStatus && VALID_STATUS.includes(ct.changeStatus)
       ? (ct.changeStatus as ChangeStatus)
       : null;
 
+  const counts = countDiffLines(ct?.diff?.json ?? null);
+
   return {
-    url: data.metadata?.sourceURL ?? url,
+    url: data.metadata?.sourceURL ?? page.url,
     markdown: data.markdown ?? "",
     title: data.metadata?.title ?? null,
     description: data.metadata?.description ?? null,
-    statusCode: data.metadata?.statusCode ?? null,
+    httpStatus: data.metadata?.statusCode ?? null,
+    changeStatus,
+    visibility:
+      ct?.visibility === "visible" || ct?.visibility === "hidden" ? ct.visibility : null,
+    previousScrapeAt: ct?.previousScrapeAt ?? null,
+    diffText: ct?.diff?.text ?? null,
+    diffJson: ct?.diff?.json ?? null,
+    linesAdded: counts?.added ?? null,
+    linesRemoved: counts?.removed ?? null,
     extracted: data.json ?? null,
-    warning,
-    tracking: {
-      changeStatus: status,
-      visibility:
-        ct?.visibility === "visible" || ct?.visibility === "hidden" ? ct.visibility : null,
-      previousScrapeAt: ct?.previousScrapeAt ?? null,
-      diffText: ct?.diff?.text ?? null,
-      diffJson: ct?.diff?.json ?? null,
-      fields: ct?.json ?? null,
-    },
+    fields: ct?.json ?? null,
+    warning: data.warning ?? body.warning ?? null,
     raw: data,
   };
 }
 
+/** Percorre files[].chunks[].changes[] contando adicoes e remocoes. */
+function countDiffLines(diffJson: unknown): { added: number; removed: number } | null {
+  const files = (diffJson as { files?: unknown[] } | null)?.files;
+  if (!Array.isArray(files)) return null;
+
+  let added = 0;
+  let removed = 0;
+
+  for (const file of files) {
+    for (const chunk of asArray((file as { chunks?: unknown }).chunks)) {
+      for (const change of asArray((chunk as { changes?: unknown }).changes)) {
+        const type = (change as { type?: string }).type;
+        if (type === "add" || type === "added") added += 1;
+        else if (type === "del" || type === "delete" || type === "removed") removed += 1;
+      }
+    }
+  }
+
+  return { added, removed };
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
 /**
- * Linhas adicionadas no git-diff, com o numero da linha.
- * E daqui que saem os posts novos de uma pagina de blog.
+ * Linhas adicionadas, com o numero da linha — de onde saem posts novos
+ * quando a extracao estruturada nao esta ligada na pagina.
  */
 export function addedLines(diffJson: unknown): Array<{ line: number; content: string }> {
   const files = (diffJson as { files?: unknown[] } | null)?.files;
@@ -166,15 +208,14 @@ export function addedLines(diffJson: unknown): Array<{ line: number; content: st
   const out: Array<{ line: number; content: string }> = [];
 
   for (const file of files) {
-    const chunks = (file as { chunks?: unknown[] }).chunks;
-    if (!Array.isArray(chunks)) continue;
-
-    for (const chunk of chunks) {
-      const changes = (chunk as { changes?: unknown[] }).changes;
-      if (!Array.isArray(changes)) continue;
-
-      for (const change of changes) {
-        const c = change as { type?: string; content?: string; ln?: number; lineNumber?: number };
+    for (const chunk of asArray((file as { chunks?: unknown }).chunks)) {
+      for (const change of asArray((chunk as { changes?: unknown }).changes)) {
+        const c = change as {
+          type?: string;
+          content?: string;
+          ln?: number;
+          lineNumber?: number;
+        };
         if (c.type !== "add" && c.type !== "added") continue;
         const content = (c.content ?? "").replace(/^\+/, "").trim();
         if (content.length === 0) continue;
@@ -185,3 +226,23 @@ export function addedLines(diffJson: unknown): Array<{ line: number; content: st
 
   return out;
 }
+
+/**
+ * Achata a extracao em pares campo → valor texto, que e o formato de
+ * `page_field_changes`. Objetos e arrays viram JSON; null vira null (ausencia),
+ * nunca string vazia.
+ */
+export function flattenFields(extracted: Record<string, unknown> | null): Map<string, string | null> {
+  const out = new Map<string, string | null>();
+  if (!extracted) return out;
+
+  for (const [key, value] of Object.entries(extracted)) {
+    if (value === null || value === undefined) out.set(key, null);
+    else if (typeof value === "object") out.set(key, JSON.stringify(value));
+    else out.set(key, String(value));
+  }
+
+  return out;
+}
+
+export type { Json };

@@ -7,10 +7,14 @@ import "server-only";
  * chamada — sem polling. Em troca segura a conexao ate terminar, por isso as
  * rotas de ingest declaram `maxDuration`.
  *
- * Aviso que vale repetir: os numeros vem da versao DESLOGADA do Instagram e
- * podem ser menores do que o que se ve logado. Conta privada nao expoe
- * engajamento nenhum. Se alguem conferir na mao e reclamar da divergencia,
- * e isso.
+ * IMPORTANTE — este wrapper NAO normaliza `likesCount`. O schema guarda o
+ * valor cru (-1 = autor escondeu as curtidas) e normaliza nas views, com
+ * nullif(likes_count, -1). Normalizar aqui perderia a distincao entre
+ * "escondido" e "ausente" no dado bruto, que e justamente o que a tabela de
+ * metricas existe para preservar.
+ *
+ * Os numeros vem da versao DESLOGADA do Instagram e podem ser menores do que
+ * o que se ve logado. Conta privada nao expoe engajamento.
  *
  * Docs: https://docs.apify.com/api/v2
  */
@@ -22,17 +26,18 @@ const DEFAULT_POSTS_ACTOR = "apify~instagram-post-scraper";
 
 export type Profile = {
   username: string;
+  igUserId: string | null;
   fullName: string | null;
   biography: string | null;
   externalUrl: string | null;
+  externalUrls: unknown[] | null;
   followersCount: number | null;
   followsCount: number | null;
   postsCount: number | null;
-  profilePicUrl: string | null;
+  highlightReelCount: number | null;
   isVerified: boolean | null;
   isBusinessAccount: boolean | null;
-  businessCategoryName: string | null;
-  /** Se virar true a coleta para: o perfil nao expoe mais nada. */
+  businessCategory: string | null;
   isPrivate: boolean;
   /** statistics.account_type: 1 pessoal, 2 business, 3 creator. */
   accountType: number | null;
@@ -45,23 +50,23 @@ export type Post = {
   url: string | null;
   /** Cadencia real: dia e hora de publicacao. */
   timestamp: string | null;
-  mediaType: string | null;
+  postType: string | null;
   /** 'clips' = reel. */
   productType: string | null;
   caption: string | null;
   hashtags: string[];
   mentions: string[];
   taggedUsers: string[];
-  displayUrl: string | null;
+  videoDuration: number | null;
+  musicInfo: unknown | null;
   /** Fixado no topo: reaparece em toda coleta, nao e post da semana. */
   isPinned: boolean;
-  /** null = desconhecido. O Apify manda -1 quando a conta esconde curtidas. */
+  /** CRU. -1 = curtidas escondidas pelo autor. Normalizado nas views. */
   likesCount: number | null;
   commentsCount: number | null;
-  /** So existe em video. null em imagem significa ausencia, nao zero. */
-  videoPlayCount: number | null;
+  /** So existe em video. null em imagem = ausencia, nao zero. */
   videoViewCount: number | null;
-  latestComments: unknown[];
+  videoPlayCount: number | null;
   raw: unknown;
 };
 
@@ -98,20 +103,12 @@ async function runActor<T>(
 
 // --- coercoes ---------------------------------------------------------------
 
-function num(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 /**
- * Contagem que o Instagram pode esconder.
- *
- * O Apify devolve -1 quando a conta oculta curtidas. Isso e DESCONHECIDO, nao
- * zero: tratar como zero derruba a media de engajamento e a gente le como
- * queda real. Qualquer negativo vira null.
+ * Numero, ou null quando ausente. Preserva negativos de proposito: -1 e um
+ * valor com significado (curtidas escondidas), nao lixo.
  */
-export function hideable(value: unknown): number | null {
-  const n = num(value);
-  return n === null || n < 0 ? null : n;
+export function num(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function str(value: unknown): string | null {
@@ -127,7 +124,7 @@ function strArray(value: unknown): string[] {
   return value
     .map((v) => {
       if (typeof v === "string") return v;
-      // taggedUsers vem como objeto { username, full_name, ... }
+      // taggedUsers vem como { username, full_name, ... }
       const u = (v as { username?: unknown })?.username;
       return typeof u === "string" ? u : null;
     })
@@ -148,16 +145,18 @@ export async function fetchProfile(handle: string): Promise<Profile | null> {
 
   return {
     username: str(item.username) ?? clean,
+    igUserId: str(item.id),
     fullName: str(item.fullName),
     biography: str(item.biography),
     externalUrl: str(item.externalUrl),
+    externalUrls: Array.isArray(item.externalUrls) ? item.externalUrls : null,
     followersCount: num(item.followersCount),
     followsCount: num(item.followsCount),
     postsCount: num(item.postsCount),
-    profilePicUrl: str(item.profilePicUrlHD) ?? str(item.profilePicUrl),
+    highlightReelCount: num(item.highlightReelCount),
     isVerified: bool(item.verified) ?? bool(item.isVerified),
     isBusinessAccount: bool(item.isBusinessAccount),
-    businessCategoryName: str(item.businessCategoryName),
+    businessCategory: str(item.businessCategoryName),
     isPrivate: item.private === true || item.isPrivate === true,
     accountType: num(statistics?.account_type),
     raw: item,
@@ -181,22 +180,23 @@ export async function fetchPosts(handle: string, limit = 12): Promise<Post[]> {
       shortCode: str(item.shortCode),
       url: str(item.url),
       timestamp: str(item.timestamp),
-      mediaType: str(item.type),
+      postType: str(item.type),
       productType: str(item.productType),
       caption: str(item.caption),
       hashtags: strArray(item.hashtags),
       mentions: strArray(item.mentions),
       taggedUsers: strArray(item.taggedUsers),
-      displayUrl: str(item.displayUrl),
+      videoDuration: num(item.videoDuration),
+      musicInfo: item.musicInfo ?? null,
       isPinned: item.isPinned === true,
-      likesCount: hideable(item.likesCount),
-      commentsCount: hideable(item.commentsCount),
-      videoPlayCount: num(item.videoPlayCount),
+      likesCount: num(item.likesCount),
+      commentsCount: num(item.commentsCount),
       videoViewCount: num(item.videoViewCount),
-      latestComments: Array.isArray(item.latestComments) ? item.latestComments : [],
+      videoPlayCount: num(item.videoPlayCount),
       raw: item,
     }))
-    .filter((post) => post.igId.length > 0)
+    // posted_at e NOT NULL no schema: post sem timestamp nao entra
+    .filter((post) => post.igId.length > 0 && post.timestamp !== null)
     .sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
 }
 
