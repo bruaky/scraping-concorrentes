@@ -4,8 +4,12 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { Logo } from "./logo";
+import { NotConnected } from "./not-connected";
 import { DASH, int, pct, shortDate, signed } from "@/lib/format";
 import type { DashboardScoreboardRow } from "@/lib/database.types";
+import type { CompetitorSources } from "@/lib/dashboard-data";
+
+const NO_SOURCES: CompetitorSources = { instagram: false, web: false };
 
 /**
  * Nivel 2: placar comparativo, uma linha por concorrente, ordenavel por
@@ -49,7 +53,14 @@ const COLUMNS: Column[] = [
 
 type Direction = "asc" | "desc";
 
-export function Scoreboard({ rows }: { rows: DashboardScoreboardRow[] }) {
+export function Scoreboard({
+  rows,
+  sources,
+}: {
+  rows: DashboardScoreboardRow[];
+  /** Por slug: quais fontes o concorrente tem cadastradas. */
+  sources: Map<string, CompetitorSources>;
+}) {
   const [sortKey, setSortKey] = useState<Column["key"]>("followers_count");
   const [direction, setDirection] = useState<Direction>("desc");
 
@@ -126,30 +137,45 @@ export function Scoreboard({ rows }: { rows: DashboardScoreboardRow[] }) {
         </thead>
 
         <tbody>
-          {sorted.map((row) => (
-            <Row key={row.competitor_id} row={row} />
-          ))}
+          {sorted.length === 0 ? (
+            // As colunas continuam visiveis: da para ver o que o placar mede
+            // antes de existir qualquer dado.
+            <tr>
+              <td colSpan={COLUMNS.length} className="px-4 py-10 text-center">
+                <p className="text-sm text-ink-2">Nenhuma fonte conectada</p>
+                <p className="mt-1 text-sm text-muted">
+                  As colunas acima são o que o placar mede quando houver dado.
+                </p>
+              </td>
+            </tr>
+          ) : (
+            sorted.map((row) => (
+              <Row
+                key={row.competitor_id}
+                row={row}
+                sources={sources.get(row.slug) ?? NO_SOURCES}
+              />
+            ))
+          )}
         </tbody>
       </table>
     </div>
   );
 }
 
-function Row({ row }: { row: DashboardScoreboardRow }) {
+function Row({
+  row,
+  sources,
+}: {
+  row: DashboardScoreboardRow;
+  sources: CompetitorSources;
+}) {
   return (
     <tr className="border-b border-line last:border-0 hover:bg-plane">
       <th scope="row" className="px-3 py-3 text-left font-normal">
         <Link href={`/competitors/${row.slug}`} className="flex items-center gap-2.5">
           <Logo name={row.competitor} src={row.logo_url} size={24} />
           <span className="font-medium text-ink">{row.competitor}</span>
-          {row.username === null ? (
-            <span
-              className="rounded border border-line px-1.5 py-px text-[0.6875rem] text-muted"
-              title="Sem handle de Instagram confirmado — as colunas sociais ficam vazias"
-            >
-              sem IG
-            </span>
-          ) : null}
           {row.is_private ? (
             <span
               className="rounded border border-line px-1.5 py-px text-[0.6875rem] text-muted"
@@ -161,41 +187,60 @@ function Row({ row }: { row: DashboardScoreboardRow }) {
         </Link>
       </th>
 
-      <Cell>{int(row.followers_count)}</Cell>
+      {/* --- Instagram: sem handle cadastrado, nao ha fonte --- */}
+      {sources.instagram ? (
+        <>
+          <Cell>{int(row.followers_count)}</Cell>
 
-      <td className="tnum px-3 py-3 text-right">
-        {row.has_comparison ? (
-          <Delta value={row.followers_delta_7d} pctValue={row.followers_pct_7d} />
-        ) : (
-          <span
-            className="text-xs text-muted"
-            title={`Baseline coletado em ${shortDate(row.tracking_since)}. A comparação começa quando houver captura com 7 dias.`}
-          >
-            baseline
-          </span>
-        )}
-      </td>
+          <td className="tnum px-3 py-3 text-right">
+            {row.has_comparison ? (
+              <Delta value={row.followers_delta_7d} pctValue={row.followers_pct_7d} />
+            ) : (
+              <span
+                className="text-xs text-muted"
+                title={`Baseline coletado em ${shortDate(row.tracking_since)}. A comparação começa quando houver captura com 7 dias.`}
+              >
+                baseline
+              </span>
+            )}
+          </td>
 
-      <Cell>{int(row.posts_7d)}</Cell>
+          <Cell>{int(row.posts_7d)}</Cell>
 
-      <td className="tnum px-3 py-3 text-right text-ink-2">
-        {int(row.avg_engagement === null ? null : Math.round(row.avg_engagement))}
-        {row.posts_unknown_likes > 0 ? (
-          <span
-            className="ml-1 cursor-help text-muted"
-            title={`${row.posts_unknown_likes} post(s) da semana escondem curtidas e ficaram fora da média`}
-          >
-            *
-          </span>
-        ) : null}
-      </td>
+          <td className="tnum px-3 py-3 text-right text-ink-2">
+            {int(row.avg_engagement === null ? null : Math.round(row.avg_engagement))}
+            {row.posts_unknown_likes > 0 ? (
+              <span
+                className="ml-1 cursor-help text-muted"
+                title={`${row.posts_unknown_likes} post(s) da semana escondem curtidas e ficaram fora da média`}
+              >
+                *
+              </span>
+            ) : null}
+          </td>
 
-      <Cell>{pct(row.engagement_rate_pct, 2)}</Cell>
-      <Cell>{int(row.blog_posts_7d)}</Cell>
-      <Cell>{int(row.open_roles)}</Cell>
-      <td className="tnum px-3 py-3 text-right text-ink-2" title={priceTitle(row)}>
-        {row.last_price_to ?? DASH}
-      </td>
+          <Cell>{pct(row.engagement_rate_pct, 2)}</Cell>
+        </>
+      ) : (
+        <td colSpan={5} className="px-3 py-3 text-center">
+          <NotConnected what="Instagram" />
+        </td>
+      )}
+
+      {/* --- Web: sem tracked_pages ativa, nao ha fonte --- */}
+      {sources.web ? (
+        <>
+          <Cell>{int(row.blog_posts_7d)}</Cell>
+          <Cell>{int(row.open_roles)}</Cell>
+          <td className="tnum px-3 py-3 text-right text-ink-2" title={priceTitle(row)}>
+            {row.last_price_to ?? DASH}
+          </td>
+        </>
+      ) : (
+        <td colSpan={3} className="px-3 py-3 text-center">
+          <NotConnected what="Páginas do site" />
+        </td>
+      )}
     </tr>
   );
 }

@@ -3,20 +3,16 @@ import { notFound } from "next/navigation";
 
 import { FeedRow } from "../../_components/feed-row";
 import { Logo } from "../../_components/logo";
+import {
+  ConnectionBanner,
+  NotConnected,
+  SectionNotConnected,
+} from "../../_components/not-connected";
 import { Empty, Panel } from "../../_components/panel";
-import { SetupNeeded } from "../../_components/setup-needed";
 import { Stat } from "../../_components/stat";
-import { missingEnv, missingIngestEnv } from "@/lib/config";
+import { loadCompetitor, type CompetitorSources } from "@/lib/dashboard-data";
 import { DASH, fullDate, int, pct, shortDate, signed } from "@/lib/format";
-import { supabaseAdmin } from "@/lib/supabase";
-import type {
-  Competitor,
-  CompetitorTimelineRow,
-  DashboardFeedRow,
-  DashboardScoreboardRow,
-  TrackedPage,
-  TrackingReadinessRow,
-} from "@/lib/database.types";
+import type { Competitor, CompetitorTimelineRow, DashboardScoreboardRow } from "@/lib/database.types";
 
 export const dynamic = "force-dynamic";
 
@@ -33,87 +29,22 @@ export default async function CompetitorPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  const { connection, competitor, stats, timeline, feed, pages, readiness, sources } =
+    await loadCompetitor(slug);
 
-  const missing = missingEnv();
-  if (missing.length > 0) {
-    return <SetupNeeded missing={missing} missingIngest={missingIngestEnv()} />;
-  }
+  // 404 de verdade: a fonte respondeu e o slug nao existe. Sem conexao nao da
+  // para afirmar isso, entao a pagina renderiza em modo desconectado.
+  if (competitor === null && connection.status === "ok") notFound();
 
-  const db = supabaseAdmin();
-
-  const { data: row } = await db.from("competitors").select("*").eq("slug", slug).maybeSingle();
-  if (!row) notFound();
-  const competitor = row as Competitor;
-
-  const [statsRes, timelineRes, feedRes, pagesRes, readinessRes] = await Promise.all([
-    db.from("v_dashboard_scoreboard").select("*").eq("slug", slug).maybeSingle(),
-    db
-      .from("v_competitor_timeline")
-      .select("*")
-      .eq("competitor_slug", slug)
-      .order("occurred_at", { ascending: false })
-      .limit(200),
-    db
-      .from("v_dashboard_feed")
-      .select("*")
-      .eq("competitor_slug", slug)
-      .limit(30),
-    db.from("tracked_pages").select("*").eq("competitor_id", competitor.id).order("page_type"),
-    db.from("v_tracking_readiness").select("*").eq("slug", slug).maybeSingle(),
-  ]);
-
-  const stats = statsRes.data as DashboardScoreboardRow | null;
-  const timeline = (timelineRes.data ?? []) as CompetitorTimelineRow[];
-  const feed = (feedRes.data ?? []) as DashboardFeedRow[];
-  const pages = (pagesRes.data ?? []) as TrackedPage[];
-  const readiness = readinessRes.data as TrackingReadinessRow | null;
+  const connected = connection.status === "ok";
 
   return (
     <div className="space-y-10">
-      <div>
-        <Link href="/" className="text-xs text-muted hover:text-ink">
-          ← Todos os concorrentes
-        </Link>
+      <Header competitor={competitor} slug={slug} stats={stats} since={readiness?.primeiro_scrape ?? null} />
 
-        <div className="mt-4 flex items-center gap-4">
-          <Logo name={competitor.name} src={competitor.logo_url} size={52} />
-          <div className="min-w-0">
-            <h1 className="text-xl font-semibold tracking-tight">{competitor.name}</h1>
-            <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted">
-              {competitor.category ? <span>{competitor.category}</span> : null}
-              {competitor.website ? (
-                <a href={competitor.website} target="_blank" rel="noopener noreferrer" className="hover:text-ink">
-                  {hostOf(competitor.website)}
-                </a>
-              ) : null}
-              {competitor.instagram_handle ? (
-                <a
-                  href={`https://instagram.com/${competitor.instagram_handle}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-ink"
-                >
-                  @{competitor.instagram_handle}
-                </a>
-              ) : null}
-              {competitor.linkedin_url ? (
-                <a href={competitor.linkedin_url} target="_blank" rel="noopener noreferrer" className="hover:text-ink">
-                  LinkedIn
-                </a>
-              ) : null}
-              {readiness?.primeiro_scrape ? (
-                <span>Monitorado desde {fullDate(readiness.primeiro_scrape)}</span>
-              ) : null}
-            </p>
-          </div>
-        </div>
+      <ConnectionBanner connection={connection} />
 
-        {competitor.notes ? (
-          <p className="mt-4 max-w-2xl text-sm text-ink-2">{competitor.notes}</p>
-        ) : null}
-      </div>
-
-      {stats ? <Metrics stats={stats} /> : null}
+      <Metrics stats={stats} sources={sources} />
 
       {feed.length > 0 ? (
         <Panel title="Alertas" bare>
@@ -126,7 +57,12 @@ export default async function CompetitorPage({
       ) : null}
 
       <Panel title="Timeline" bare>
-        {timeline.length === 0 ? (
+        {!connected && timeline.length === 0 ? (
+          <SectionNotConnected title="Fonte não conectada">
+            A timeline junta site e Instagram no mesmo eixo de tempo. É aqui que aparece a
+            correlação entre, por exemplo, uma mudança de preço e vagas novas de vendas.
+          </SectionNotConnected>
+        ) : timeline.length === 0 ? (
           <Empty>
             {readiness?.status === "baseline" && readiness.primeiro_scrape ? (
               <>
@@ -157,7 +93,11 @@ export default async function CompetitorPage({
 
       <Panel title="Páginas monitoradas" bare>
         {pages.length === 0 ? (
-          <Empty>Nenhuma página cadastrada em <code>tracked_pages</code>.</Empty>
+          <SectionNotConnected title="Nenhuma página cadastrada">
+            Insira linhas em <code>tracked_pages</code> apontando para a home, o pricing, o blog e
+            a página de vagas deste concorrente. O <code>page_type</code> decide o que é extraído
+            e a severidade do evento.
+          </SectionNotConnected>
         ) : (
           <ul>
             {pages.map((p) => (
@@ -179,6 +119,65 @@ export default async function CompetitorPage({
           </ul>
         )}
       </Panel>
+    </div>
+  );
+}
+
+function Header({
+  competitor,
+  slug,
+  stats,
+  since,
+}: {
+  competitor: Competitor | null;
+  slug: string;
+  stats: DashboardScoreboardRow | null;
+  since: string | null;
+}) {
+  // Sem conexao nao sabemos o nome: o slug e o unico identificador honesto.
+  const name = competitor?.name ?? slug;
+
+  return (
+    <div>
+      <Link href="/" className="text-xs text-muted hover:text-ink">
+        ← Todos os concorrentes
+      </Link>
+
+      <div className="mt-4 flex items-center gap-4">
+        <Logo name={name} src={competitor?.logo_url ?? null} size={52} />
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight">{name}</h1>
+          <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted">
+            {competitor?.category ? <span>{competitor.category}</span> : null}
+            {competitor?.website ? (
+              <a href={competitor.website} target="_blank" rel="noopener noreferrer" className="hover:text-ink">
+                {hostOf(competitor.website)}
+              </a>
+            ) : null}
+            {competitor?.instagram_handle ? (
+              <a
+                href={`https://instagram.com/${competitor.instagram_handle}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-ink"
+              >
+                @{competitor.instagram_handle}
+              </a>
+            ) : null}
+            {competitor?.linkedin_url ? (
+              <a href={competitor.linkedin_url} target="_blank" rel="noopener noreferrer" className="hover:text-ink">
+                LinkedIn
+              </a>
+            ) : null}
+            {since ? <span>Monitorado desde {fullDate(since)}</span> : null}
+            {stats?.is_private ? <span>perfil privado</span> : null}
+          </p>
+        </div>
+      </div>
+
+      {competitor?.notes ? (
+        <p className="mt-4 max-w-2xl text-sm text-ink-2">{competitor.notes}</p>
+      ) : null}
     </div>
   );
 }
@@ -213,19 +212,38 @@ function TimelineRow({ entry }: { entry: CompetitorTimelineRow }) {
   );
 }
 
-function Metrics({ stats }: { stats: DashboardScoreboardRow }) {
-  const delta = stats.followers_delta_7d;
+function Metrics({
+  stats,
+  sources,
+}: {
+  stats: DashboardScoreboardRow | null;
+  sources: CompetitorSources;
+}) {
+  const delta = stats?.followers_delta_7d ?? null;
+  const hasComparison = stats?.has_comparison ?? false;
 
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-      <Stat label="Seguidores" value={int(stats.followers_count)} />
+      {/* --- Instagram --- */}
+      <Stat
+        label="Seguidores"
+        value={sources.instagram ? int(stats?.followers_count) : <NotConnected what="Instagram" />}
+      />
 
       <Stat
         label="Δ 7 dias"
         hint="Comparado com a captura mais recente com 7 ou mais dias"
-        value={stats.has_comparison ? signed(delta) : "baseline"}
+        value={
+          !sources.instagram ? (
+            <NotConnected what="Instagram" />
+          ) : hasComparison ? (
+            signed(delta)
+          ) : (
+            "baseline"
+          )
+        }
         tone={
-          !stats.has_comparison || delta === null
+          !sources.instagram || !hasComparison || delta === null
             ? "neutral"
             : delta > 0
               ? "up"
@@ -234,23 +252,35 @@ function Metrics({ stats }: { stats: DashboardScoreboardRow }) {
                 : "neutral"
         }
         note={
-          stats.has_comparison
-            ? stats.followers_pct_7d !== null
-              ? pct(stats.followers_pct_7d, 1)
-              : null
-            : "comparação começa na próxima coleta"
+          !sources.instagram
+            ? null
+            : hasComparison
+              ? stats?.followers_pct_7d != null
+                ? pct(stats.followers_pct_7d, 1)
+                : null
+              : "comparação começa na próxima coleta"
         }
       />
 
-      <Stat label="Posts 7d" value={int(stats.posts_7d)} note={reelsNote(stats)} />
+      <Stat
+        label="Posts 7d"
+        value={sources.instagram ? int(stats?.posts_7d) : <NotConnected what="Instagram" />}
+        note={sources.instagram ? reelsNote(stats) : null}
+      />
 
       <Stat
         label="Eng. médio"
         hint="Média de curtidas + comentários dos posts da semana"
-        value={int(stats.avg_engagement === null ? null : Math.round(stats.avg_engagement))}
+        value={
+          sources.instagram ? (
+            int(stats?.avg_engagement == null ? null : Math.round(stats.avg_engagement))
+          ) : (
+            <NotConnected what="Instagram" />
+          )
+        }
         note={
-          stats.posts_unknown_likes > 0
-            ? `${stats.posts_unknown_likes} post(s) escondem curtidas`
+          sources.instagram && (stats?.posts_unknown_likes ?? 0) > 0
+            ? `${stats?.posts_unknown_likes} post(s) escondem curtidas`
             : null
         }
       />
@@ -258,28 +288,40 @@ function Metrics({ stats }: { stats: DashboardScoreboardRow }) {
       <Stat
         label="ER"
         hint="(curtidas + comentários) ÷ seguidores"
-        value={pct(stats.engagement_rate_pct, 2)}
+        value={
+          sources.instagram ? pct(stats?.engagement_rate_pct, 2) : <NotConnected what="Instagram" />
+        }
       />
 
-      <Stat label="Blog 7d" value={int(stats.blog_posts_7d)} />
-      <Stat label="Vagas abertas" value={int(stats.open_roles)} />
+      {/* --- Web --- */}
+      <Stat
+        label="Blog 7d"
+        value={sources.web ? int(stats?.blog_posts_7d) : <NotConnected what="Páginas do site" />}
+      />
+
+      <Stat
+        label="Vagas abertas"
+        value={sources.web ? int(stats?.open_roles) : <NotConnected what="Página de vagas" />}
+      />
 
       <Stat
         label="Último preço"
         hint={
-          stats.last_price_field
+          stats?.last_price_field
             ? `${stats.last_price_field}, em ${shortDate(stats.last_price_changed_at)}`
             : undefined
         }
-        value={stats.last_price_to ?? DASH}
-        note={stats.last_price_from ? `antes: ${stats.last_price_from}` : null}
+        value={
+          sources.web ? (stats?.last_price_to ?? DASH) : <NotConnected what="Página de preços" />
+        }
+        note={sources.web && stats?.last_price_from ? `antes: ${stats.last_price_from}` : null}
       />
     </div>
   );
 }
 
-function reelsNote(stats: DashboardScoreboardRow): string | null {
-  if (stats.reels_7d === null || stats.reels_7d === 0) return null;
+function reelsNote(stats: DashboardScoreboardRow | null): string | null {
+  if (!stats?.reels_7d) return null;
   return `${stats.reels_7d} reel(s)`;
 }
 

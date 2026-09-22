@@ -117,6 +117,33 @@ era no-op; o comentário sobre `sum()` retornar NULL estava invertido;
 `bio_link_changed` dizia "mudou a bio" quando só o link mudou; a timeline não
 mostrava páginas que ficaram ocultas.
 
+## Três estados, nunca confundidos
+
+A tela **sempre renderiza**. Falta de credencial, consulta recusada ou fonte
+não cadastrada não derrubam a página — cada uma vira um estado que a UI
+declara. Um painel que morre inteiro não diz onde está o buraco; um painel que
+diz "fonte não conectada" naquela célula, diz.
+
+| Estado | O que significa | Como aparece |
+|---|---|---|
+| **não conectada** | não existe de onde ler | `não conectada`, em tinta neutra |
+| **baseline** | fonte ligada, coletou uma vez, sem com o que comparar | `baseline` |
+| **desconhecido** | fonte ligada e coletada, este número não veio | `—` |
+
+Confundir os dois primeiros com o terceiro é o que faz um concorrente sem
+Instagram parecer um concorrente com engajamento zero.
+
+"Não conectada" se aplica em dois níveis:
+
+- **Infra**: sem `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`, a estrutura toda
+  aparece e o topo lista o que falta, pelo nome da variável, nunca pelo valor.
+- **Por concorrente**: sem `instagram_handle`, as colunas sociais são
+  não conectadas; sem linha ativa em `tracked_pages`, as colunas de web são.
+  Os 12 concorrentes semeados nascem assim de propósito.
+
+Nenhum desses estados usa cor de status: vermelho e amarelo estão reservados
+para preço e mudança estrutural no feed. Ausência é tinta neutra.
+
 ## Regras que valem repetir
 
 **`likes_count` é gravado CRU, com o `-1`.** A normalização mora nas views
