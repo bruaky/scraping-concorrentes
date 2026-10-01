@@ -2,7 +2,7 @@ import { assertAuthorized, errorResponse } from "@/lib/auth";
 import { ingestCompetitor, type IngestResult } from "@/lib/instagram";
 import { closeRun, generateEvents, openRun } from "@/lib/runs";
 import { supabaseAdmin } from "@/lib/supabase";
-import { TRACKED_SLUGS } from "@/lib/tracked";
+import { TRACKED_SLUGS, instagramHandle } from "@/lib/tracked";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,10 +31,7 @@ export async function POST(req: Request): Promise<Response> {
       .from("competitors")
       .select("id, slug, instagram_handle")
       .eq("is_active", true)
-      .in("slug", TRACKED_SLUGS)
-      // handle null = nao tem ou nao foi confirmado. Muito B2B early-stage
-      // so tem LinkedIn; nao ha o que coletar.
-      .not("instagram_handle", "is", null);
+      .in("slug", TRACKED_SLUGS);
 
     if (body.competitorSlug) query = query.eq("slug", body.competitorSlug);
 
@@ -48,9 +45,12 @@ export async function POST(req: Request): Promise<Response> {
     // poucos slots simultaneos.
     const results: IngestResult[] = [];
     for (const c of competitors ?? []) {
+      // O handle salvo em lib/tracked.ts vale mais que o do banco.
+      const handle = instagramHandle(c.slug) ?? c.instagram_handle;
+      if (!handle) continue;
       results.push(
         await ingestCompetitor(
-          { id: c.id, slug: c.slug, handle: c.instagram_handle as string },
+          { id: c.id, slug: c.slug, handle },
           runId,
           body.postLimit ?? 12,
         ),
