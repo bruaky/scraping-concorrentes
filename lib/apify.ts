@@ -119,6 +119,15 @@ function bool(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
+/**
+ * O actor serializa "sem categoria" como a string literal "None" (vazamento
+ * do None do Python), nao como null.
+ */
+export function businessCategory(value: unknown): string | null {
+  const s = str(value);
+  return s === "None" ? null : s;
+}
+
 function strArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -156,7 +165,7 @@ export async function fetchProfile(handle: string): Promise<Profile | null> {
     highlightReelCount: num(item.highlightReelCount),
     isVerified: bool(item.verified) ?? bool(item.isVerified),
     isBusinessAccount: bool(item.isBusinessAccount),
-    businessCategory: str(item.businessCategoryName),
+    businessCategory: businessCategory(item.businessCategoryName),
     isPrivate: item.private === true || item.isPrivate === true,
     accountType: num(statistics?.account_type),
     raw: item,
