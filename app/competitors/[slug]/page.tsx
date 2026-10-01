@@ -8,7 +8,7 @@ import { Empty, Panel } from "../../_components/panel";
 import { Stat } from "../../_components/stat";
 import { DASH, fullDate, int, pct, shortDate, signed } from "@/lib/format";
 import { supabaseAdmin } from "@/lib/supabase";
-import { instagramHandle, isTracked } from "@/lib/tracked";
+import { instagramHandle, isTracked, logoUrl } from "@/lib/tracked";
 import type {
   Competitor,
   CompetitorTimelineRow,
@@ -81,7 +81,7 @@ export default async function CompetitorPage({
         </Link>
 
         <div className="mt-4 flex items-center gap-4">
-          <Logo name={competitor.name} src={competitor.logo_url} size={52} />
+          <Logo name={competitor.name} src={logoUrl(slug, competitor.logo_url)} size={52} />
           <div className="min-w-0">
             <h1 className="text-xl font-semibold tracking-tight">{competitor.name}</h1>
             <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted">

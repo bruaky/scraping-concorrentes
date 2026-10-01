@@ -6,7 +6,7 @@ import { Scoreboard } from "./_components/scoreboard";
 import { liveRunMode } from "@/lib/live-run";
 import { fullDate } from "@/lib/format";
 import { supabaseAdmin } from "@/lib/supabase";
-import { TRACKED_SLUGS, instagramHandle } from "@/lib/tracked";
+import { TRACKED_SLUGS, instagramHandle, logoUrl } from "@/lib/tracked";
 import type {
   CollectionRun,
   Competitor,
@@ -46,9 +46,15 @@ export default async function DashboardPage() {
       .order("captured_at"),
   ]);
 
-  const competitors = (competitorsRes.data ?? []) as Competitor[];
+  const competitors = ((competitorsRes.data ?? []) as Competitor[]).map((c) => ({
+    ...c,
+    logo_url: logoUrl(c.slug, c.logo_url),
+  }));
   const feed = (feedRes.data ?? []) as DashboardFeedRow[];
-  const scoreboard = (scoreboardRes.data ?? []) as DashboardScoreboardRow[];
+  const scoreboard = ((scoreboardRes.data ?? []) as DashboardScoreboardRow[]).map((r) => ({
+    ...r,
+    logo_url: logoUrl(r.slug, r.logo_url),
+  }));
   const lastRun = ((runRes.data ?? []) as CollectionRun[])[0];
   const ids = new Set(competitors.map((c) => c.id));
   const history = ((historyRes.data ?? []) as LiveSnapshot[]).filter((s) => ids.has(s.competitor_id));
