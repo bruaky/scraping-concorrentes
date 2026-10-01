@@ -145,7 +145,7 @@ export function LineChart({
             <path d={area} fill="var(--color-accent)" opacity={0.1} />
             <path d={path} fill="none" stroke="var(--color-accent)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
 
-            {highlightLast ? (
+            {highlightLast || points.length === 1 ? (
               <circle
                 key={points[points.length - 1].t}
                 cx={x(times[times.length - 1])}

@@ -3,27 +3,29 @@ import "server-only";
 import { supabaseAdmin } from "./supabase";
 
 /**
- * Modo demonstração.
+ * Botão "Rodar coleta" do dashboard (/api/live/run).
  *
- * Liga com DEMO_MODE=1. O botão "Rodar coleta" do dashboard chama
- * /api/demo/run, que percorre o MESMO caminho da coleta real — abre um
- * collection_run, grava snapshot e métricas, chama fn_generate_change_events
- * e fecha o run — trocando só a chamada ao Apify por valores simulados a
- * partir da última captura. Assim dá para mostrar o pipeline ao vivo sem
- * gastar crédito e sem depender dos handles estarem confirmados.
+ * LIVE_RUN escolhe o que o botão faz:
  *
- * Tudo que a demo grava é marcado (job 'demo_run', posts 'demo_live_*',
- * eventos com payload.demo) e cada clique apaga a rodada anterior antes de
- * gravar a nova: rodar duas vezes não empilha "hoje" em cima de "hoje".
+ *   apify      coleta DE VERDADE: chama o Apify para cada concorrente com
+ *              Instagram confirmado e grava exatamente como o ingest semanal
+ *              (lib/instagram.ts). É o padrão para apresentar.
+ *   simulated  plano B, sem crédito nem rede: parte da última captura real
+ *              e simula a de hoje. Tudo que grava é marcado como demo (job
+ *              'demo_run', posts 'demo_live_*', eventos com payload.demo) e
+ *              cada clique apaga a rodada anterior. A tela avisa que é
+ *              simulado.
+ *   (vazio)    sem botão; a rota responde 404.
  */
-export function demoEnabled(): boolean {
-  return process.env.DEMO_MODE === "1";
+export type LiveRunMode = "apify" | "simulated";
+
+export function liveRunMode(): LiveRunMode | null {
+  const v = process.env.LIVE_RUN;
+  return v === "apify" || v === "simulated" ? v : null;
 }
 
 export const DEMO_JOB = "demo_run";
-
-/** Uma captura é "da semana passada" se tiver mais de 1 dia. */
-const STALE_MS = 24 * 60 * 60 * 1000;
+export const LIVE_JOB = "ig_live";
 
 export type DemoTarget = {
   id: string;
@@ -75,6 +77,17 @@ export async function clearPreviousDemoRun(): Promise<void> {
   }
 }
 
+/** Última captura de cada concorrente — o "antes" da coleta de agora. */
+export async function latestSnapshot(competitorId: string): Promise<Snapshot | null> {
+  const { data } = await supabaseAdmin()
+    .from("instagram_profile_snapshots")
+    .select("*")
+    .eq("competitor_id", competitorId)
+    .order("captured_at", { ascending: false })
+    .limit(1);
+  return ((data ?? []) as Snapshot[])[0] ?? null;
+}
+
 export async function listTargets(): Promise<DemoTarget[]> {
   const { data, error } = await supabaseAdmin()
     .from("competitors")
@@ -112,9 +125,7 @@ export async function simulateCompetitor(target: DemoTarget, runId: string): Pro
 
   if (error) throw new Error(`Falha ao ler histórico: ${error.message}`);
 
-  const history = ((snaps ?? []) as Snapshot[]).filter(
-    (s) => Date.now() - new Date(s.captured_at).getTime() > STALE_MS,
-  );
+  const history = (snaps ?? []) as Snapshot[];
   const last = history[0] ?? null;
   const before = history[1] ?? null;
 
@@ -126,7 +137,11 @@ export async function simulateCompetitor(target: DemoTarget, runId: string): Pro
       ? (last.followers_count - before.followers_count) / before.followers_count
       : 0.008;
   const jump = Math.random() < 0.1 ? 0.03 + Math.random() * 0.03 : 0;
-  const growth = trend * (0.6 + Math.random() * 1.1) + (Math.random() - 0.35) * 0.004 + jump;
+  // A tendencia e semanal; a coleta pode ser horas depois do baseline. Sem
+  // essa escala, uma demo no mesmo dia mostraria uma semana de crescimento.
+  const elapsedDays = last ? (Date.now() - Date.parse(last.captured_at)) / 86_400_000 : 7;
+  const scale = Math.min(1.5, Math.max(0.15, elapsedDays / 7));
+  const growth = (trend * (0.6 + Math.random() * 1.1) + (Math.random() - 0.35) * 0.004 + jump) * scale;
   const followers = Math.max(0, Math.round(base * (1 + growth)));
 
   const newPosts = Math.random() < 0.25 ? 0 : 1 + Math.floor(Math.random() * 2);

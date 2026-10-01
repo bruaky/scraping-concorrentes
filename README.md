@@ -48,22 +48,25 @@ app/
   api/
     cron/weekly/route.ts                Vercel Cron
     ingest/instagram/route.ts           perfil + posts + métricas
-    demo/run/route.ts                   coleta de demonstração ao vivo (NDJSON)
+    live/run/route.ts                   botão "Rodar coleta" (NDJSON)
 lib/
   supabase.ts       client service-role, SÓ server
   apify.ts          perfil + posts, valores CRUS
   runs.ts           collection_runs + fn_generate_change_events
   pipeline.ts       orquestra as rotas de ingest
-  demo.ts           simulação usada pelo botão "Rodar coleta"
+  instagram.ts      Apify → snapshot + posts + métricas
+  live-run.ts       modos do botão "Rodar coleta"
   format.ts         formatação (ausência nunca vira zero)
 supabase/migrations/
   0001_competitive_intel.sql  schema (verbatim, como aplicado)
   0002_dashboard_views.sql    views + fn_generate_change_events (verbatim)
   0003_dashboard_fixes.sql    correções — ver abaixo
   0004_followers_title.sql    título do salto de seguidores sem espaços
+supabase/baseline/
+  2026-10-01_baseline.sql     ponto de partida verificado (Social Blade + sites)
 supabase/demo/
-  demo_seed.sql               9 semanas de dados FICTÍCIOS
-  demo_cleanup.sql            remove tudo que a demo gravou
+  demo_cleanup.sql            remove o que o modo simulado gravou
+public/logos/                 logos oficiais dos concorrentes
 ```
 
 `0001` e `0002` estão verbatim de propósito, para poderem ser diferenciados
@@ -175,36 +178,31 @@ curl -X POST http://localhost:3000/api/ingest/instagram \
   -d '{"competitorSlug":"glean"}'
 ```
 
-## Demonstração
+## Baseline e coleta ao vivo
 
-Para apresentar o dashboard antes de ter coleta real.
+**Baseline real.** `supabase/baseline/2026-10-01_baseline.sql` (rodar depois
+das migrations) grava o ponto de partida verificado:
 
-**1. Dados de exemplo.** Rode `supabase/demo/demo_seed.sql` no SQL Editor,
-depois das migrations. Ele preenche 9 semanas de histórico **fictício** para
-os 12 concorrentes: seguidores, posts e métricas do Instagram; preço, vagas e
-headline do site para Glean, Get Zep, Workera, Delphi AI e Strattum; posts de
-blog; e os alertas, gerados pela própria `fn_generate_change_events`, run a
-run. As datas são relativas a `now()` — rode de novo na manhã da
-apresentação (é idempotente). A Strattum traz a história da correlação: na
-última semana mexeu no preço, na home, na bio e abriu 4 vagas.
+- site, LinkedIn e logo oficiais dos 12 concorrentes (logos em `public/logos/`);
+- Instagram **só** de quem o site oficial linka: Glean (@gleanwork), Meuze
+  (@meuzeai), Bond (@bondapp.io) e Strattum (@strattum.ai). Os outros 8 ficam
+  "sem IG" — nenhum handle chutado;
+- seguidores, seguidos, posts e engajamento médio desses 4, lidos no Social
+  Blade em 01/10/2026. O histórico diário do Social Blade exige login, por
+  isso a série começa nesse dia.
 
-O seed preenche `instagram_handle`, `website` e `logo_url` com valores de
-exemplo, e guarda os originais em `demo_competitor_backup`.
+**O botão.** Com `LIVE_RUN` definido, o topo do dashboard ganha **Rodar
+coleta**. Ele chama `POST /api/live/run`, que responde em NDJSON: a tabela
+"baseline × hoje", as barras de variação e a série do concorrente em foco se
+preenchem ao vivo, e no fim o feed e o placar recarregam.
 
-**2. O botão.** Com `DEMO_MODE=1`, o topo do dashboard ganha o botão
-**Rodar coleta**. Ele chama `POST /api/demo/run`, que percorre o mesmo
-caminho da coleta real — abre o `collection_run`, grava snapshot e métricas
-por concorrente, chama `fn_generate_change_events` e fecha o run — trocando
-só a chamada ao Apify por números simulados a partir da tendência de cada
-um. A resposta vem em NDJSON, então a tabela "semana passada × hoje", as
-barras de variação e a linha do concorrente em foco vão se preenchendo ao
-vivo. No fim, o feed e o placar recarregam com os alertas novos.
+- `LIVE_RUN=apify`: coleta real, pelo mesmo código do ingest semanal
+  (`lib/instagram.ts`). Gasta crédito do Apify; há um intervalo mínimo de 2
+  minutos entre runs.
+- `LIVE_RUN=simulated`: plano B sem rede. Parte do baseline real e simula a
+  captura de hoje, proporcional ao tempo decorrido. A tela mostra "simulado",
+  e cada clique apaga a rodada anterior. Para limpar de vez:
+  `supabase/demo/demo_cleanup.sql`.
 
-Cada clique apaga a rodada anterior antes de gravar: dá para ensaiar quantas
-vezes quiser.
-
-**3. Limpeza.** `supabase/demo/demo_cleanup.sql` remove tudo que o seed e o
-botão gravaram (runs `demo*`, posts `demo_*`, páginas com tag `demo`,
-eventos com `payload.demo`) e restaura os concorrentes. Desligue o
-`DEMO_MODE` antes de ligar a coleta real — os handles de exemplo não são os
-perfis verdadeiros.
+A rota não pede `CRON_SECRET`, porque roda no browser: ligue `LIVE_RUN` só
+para apresentar.

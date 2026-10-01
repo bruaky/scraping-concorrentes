@@ -1,8 +1,9 @@
 -- ============================================================
 -- Remove os dados de demonstração
 -- ============================================================
--- Apaga só o que demo_seed.sql e o botão "Rodar coleta" (/api/demo/run)
--- gravaram, e devolve os concorrentes ao estado de antes do seed.
+-- Apaga só o que o botão "Rodar coleta" gravou no modo LIVE_RUN=simulated
+-- (e, se ainda existir, o antigo seed de demonstração). Coletas reais —
+-- baseline, ingest semanal e LIVE_RUN=apify — não são tocadas.
 --
 -- Como o dado de demo é reconhecido:
 --   collection_runs        job começando com 'demo'
@@ -10,7 +11,7 @@
 --   tracked_pages          firecrawl_tag = 'demo' (cascata: scrapes, diffs, campos)
 --   blog_posts             raw->>'demo' = 'true'
 --   change_events          payload->>'demo' = 'true'
---   competitors            restaurados de demo_competitor_backup
+--   competitors            restaurados de demo_competitor_backup (seed antigo)
 --
 -- Snapshots e métricas têm `on delete set null` no run_id, então são
 -- apagados explicitamente ANTES dos runs.

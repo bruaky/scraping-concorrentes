@@ -164,7 +164,9 @@ function Row({ row }: { row: DashboardScoreboardRow }) {
       <Cell>{int(row.followers_count)}</Cell>
 
       <td className="tnum px-3 py-3 text-right">
-        {row.has_comparison ? (
+        {row.username === null ? (
+          <span className="text-muted">{DASH}</span>
+        ) : row.has_comparison ? (
           <Delta value={row.followers_delta_7d} pctValue={row.followers_pct_7d} />
         ) : (
           <span
