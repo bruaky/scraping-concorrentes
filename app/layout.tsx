@@ -1,6 +1,8 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
 
+import logo from "../public/brand/hakutaku.png";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,8 +17,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen">
         <header className="border-b border-line">
           <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
-            <Link href="/" className="text-sm font-semibold tracking-tight">
-              Hakutaku
+            <Link href="/" aria-label="Hakutaku — início">
+              <Image src={logo} alt="Hakutaku" priority sizes="240px" className="h-5 w-auto" />
             </Link>
             <span className="eyebrow">Inteligência competitiva</span>
           </div>
