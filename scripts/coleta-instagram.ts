@@ -7,8 +7,7 @@
  * Le SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY e APIFY_TOKEN do ambiente ou do
  * .env.local. Busca Glean, Meuze, Bond e Strattum (lib/tracked.ts), grava
  * snapshot + posts + metricas, gera os alertas e imprime cada passo. Custa
- * ~US$ 0,12 e leva ~3 min para os 4 (medido em 01/10/2026). Respeita o mesmo
- * intervalo de 2 min entre runs que o botao.
+ * ~US$ 0,12 e leva ~3 min para os 4 (medido em 01/10/2026).
  */
 import { runLiveCollection, type CollectStep } from "../lib/live-collect";
 

@@ -197,8 +197,8 @@ coleta**. Ele chama `POST /api/live/run`, que responde em NDJSON: a tabela
 preenchem ao vivo, e no fim o feed e o placar recarregam.
 
 - `LIVE_RUN=apify`: coleta real, pelo mesmo código do ingest semanal
-  (`lib/instagram.ts`). Gasta crédito do Apify; há um intervalo mínimo de 2
-  minutos entre runs.
+  (`lib/instagram.ts`). Gasta crédito do Apify a cada clique (~US$ 0,12),
+  sem intervalo mínimo entre runs.
 - `LIVE_RUN=simulated`: plano B sem rede. Parte do baseline real e simula a
   captura de hoje, proporcional ao tempo decorrido. A tela mostra "simulado",
   e cada clique apaga a rodada anterior. Para limpar de vez:
@@ -218,7 +218,7 @@ posts de blog, páginas novas do site, vagas e menções em outros sites
 (`lib/news.ts`, actor `apify/google-search-scraper`). As buscas de cada
 concorrente ficam em `lib/tracked.ts` (`NEWS_QUERIES`), calibradas para fugir
 de homônimos. Roda na coleta semanal (`/api/ingest/news`), no botão
-**Atualizar** da seção (com `LIVE_RUN=apify`) e em `npm run noticias`. Um run
+**Atualizar** da seção (com `LIVE_RUN=apify`, ~US$ 0,05 por clique) e em `npm run noticias`. Um run
 por concorrente, em paralelo: ~3,5 min e ~US$ 0,05 na medição de 01/10/2026.
 Precisa da migration `0006_competitor_news`.
 
