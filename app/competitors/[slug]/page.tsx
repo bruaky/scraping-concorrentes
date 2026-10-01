@@ -163,8 +163,7 @@ export default async function CompetitorPage({
                 </span>
                 <span className="text-xs text-muted">
                   {p.is_active ? "" : "pausada · "}
-                  {p.extraction_schema ? "extração json · " : ""}
-                  {p.firecrawl_tag}
+                  {p.extraction_schema ? "extração json" : ""}
                 </span>
               </li>
             ))}

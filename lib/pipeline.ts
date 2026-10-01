@@ -3,12 +3,11 @@ import "server-only";
 /**
  * Dispara as rotas de ingest.
  *
- * Cada ingest roda como requisicao propria para ter seu `maxDuration` — uma
- * falha do Instagram nao derruba a coleta do site, e o custo de cada um fica
- * separado em `collection_runs`.
+ * Cada ingest roda como requisicao propria para ter seu `maxDuration`, e o
+ * custo de cada um fica separado em `collection_runs`.
  */
 export type IngestSummary = {
-  job: "firecrawl" | "instagram";
+  job: "instagram";
   ok: boolean;
   runId?: string;
   events?: number | null;
@@ -18,7 +17,6 @@ export type IngestSummary = {
 };
 
 const ENDPOINTS = {
-  firecrawl: "/api/ingest/firecrawl",
   instagram: "/api/ingest/instagram",
 } as const;
 
@@ -53,10 +51,10 @@ export async function runIngest(job: keyof typeof ENDPOINTS): Promise<IngestSumm
 }
 
 export async function runFullPipeline(): Promise<IngestSummary[]> {
-  return [await runIngest("firecrawl"), await runIngest("instagram")];
+  return [await runIngest("instagram")];
 }
 
-/** URL da propria app, para o cron e o webhook chamarem as rotas de ingest. */
+/** URL da propria app, para o cron chamar as rotas de ingest. */
 export function baseUrl(): string {
   const explicit = process.env.APP_BASE_URL;
   if (explicit) return explicit.replace(/\/+$/, "");
