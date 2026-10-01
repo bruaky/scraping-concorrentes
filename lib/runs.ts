@@ -60,6 +60,13 @@ export async function generateEvents(runId: string): Promise<number> {
     p_run_id: runId,
   });
 
-  if (error) throw new Error(`Falha ao gerar eventos: ${error.message}`);
+  if (error) {
+    // Sem a funcao no banco, o PostgREST responde "Could not find the
+    // function ... in the schema cache": as migrations 0002+ nao rodaram.
+    const hint = /schema cache/.test(error.message)
+      ? " — aplique as migrations 0002 a 0005 no Supabase e rode `notify pgrst, 'reload schema';`"
+      : "";
+    throw new Error(`Falha ao gerar eventos: ${error.message}${hint}`);
+  }
   return data ?? 0;
 }

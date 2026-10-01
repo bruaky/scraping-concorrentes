@@ -71,9 +71,22 @@ export type Post = {
 };
 
 function token(): string {
-  const t = process.env.APIFY_TOKEN;
-  if (!t) throw new Error("APIFY_TOKEN nao definida (ver .env.example)");
+  const t = process.env.APIFY_TOKEN?.trim();
+  if (!t) {
+    throw new Error(
+      "APIFY_TOKEN vazia ou nao definida no ambiente (na Vercel: Settings > Environment Variables, depois redeploy)",
+    );
+  }
   return t;
+}
+
+/**
+ * Actor configurado, ou o padrao. Variavel definida mas VAZIA (comum quando
+ * o .env.example e importado na Vercel) tambem cai no padrao — com `??` ela
+ * viraria a URL /acts//run-sync-get-dataset-items.
+ */
+export function actorFrom(value: string | undefined, fallback: string): string {
+  return value?.trim() || fallback;
 }
 
 async function runActor<T>(
@@ -143,7 +156,7 @@ function strArray(value: unknown): string[] {
 // --- perfil -----------------------------------------------------------------
 
 export async function fetchProfile(handle: string): Promise<Profile | null> {
-  const actor = process.env.APIFY_INSTAGRAM_PROFILE_ACTOR ?? DEFAULT_PROFILE_ACTOR;
+  const actor = actorFrom(process.env.APIFY_INSTAGRAM_PROFILE_ACTOR, DEFAULT_PROFILE_ACTOR);
   const clean = handle.replace(/^@/, "");
 
   const items = await runActor<Record<string, unknown>>(actor, { usernames: [clean] });
@@ -175,7 +188,7 @@ export async function fetchProfile(handle: string): Promise<Profile | null> {
 // --- posts ------------------------------------------------------------------
 
 export async function fetchPosts(handle: string, limit = 12): Promise<Post[]> {
-  const actor = process.env.APIFY_INSTAGRAM_POSTS_ACTOR ?? DEFAULT_POSTS_ACTOR;
+  const actor = actorFrom(process.env.APIFY_INSTAGRAM_POSTS_ACTOR, DEFAULT_POSTS_ACTOR);
   const clean = handle.replace(/^@/, "");
 
   const items = await runActor<Record<string, unknown>>(actor, {
