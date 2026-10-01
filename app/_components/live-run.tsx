@@ -5,7 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { BarChart, LineChart, type LinePoint } from "./charts";
 import { Logo } from "./logo";
+import { SelfBadge } from "./self-badge";
 import { DASH, int, pct, shortDate, signed } from "@/lib/format";
+import { isSelf } from "@/lib/tracked";
 
 /**
  * Coleta ao vivo: baseline x hoje, com graficos.
@@ -458,7 +460,10 @@ function CompetitorCell({ c }: { c: LiveCompetitor }) {
     <span className="flex items-center gap-2.5">
       <Logo name={c.name} src={c.logo_url} size={24} />
       <span className="min-w-0">
-        <span className="block truncate font-medium text-ink">{c.name}</span>
+        <span className="flex items-center gap-1.5">
+          <span className="truncate font-medium text-ink">{c.name}</span>
+          {isSelf(c.slug) ? <SelfBadge /> : null}
+        </span>
         {c.handle ? <span className="block truncate text-xs text-muted">@{c.handle}</span> : null}
       </span>
     </span>
