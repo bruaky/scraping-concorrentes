@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { Logo } from "./logo";
+import { SelfBadge } from "./self-badge";
 import { DASH, int, pct, shortDate, signed } from "@/lib/format";
 import type { DashboardScoreboardRow } from "@/lib/database.types";
+import { isSelf } from "@/lib/tracked";
 
 /**
  * Nivel 2: placar comparativo, uma linha por concorrente, ordenavel por
@@ -142,6 +144,7 @@ function Row({ row }: { row: DashboardScoreboardRow }) {
         <Link href={`/competitors/${row.slug}`} className="flex items-center gap-2.5">
           <Logo name={row.competitor} src={row.logo_url} size={24} />
           <span className="font-medium text-ink">{row.competitor}</span>
+          {isSelf(row.slug) ? <SelfBadge /> : null}
           {row.username === null ? (
             <span
               className="rounded border border-line px-1.5 py-px text-[0.6875rem] text-muted"

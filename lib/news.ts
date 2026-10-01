@@ -12,8 +12,8 @@ import type { Json, NewsKind } from "./database.types";
  *
  * Usa o apify/google-search-scraper. Ele faz uma busca depois da outra
  * (~20 s cada; 12 buscas num run passaram de 4 min), entao aqui roda UM run
- * por concorrente, todos em paralelo, sem run-sync: dispara, espera cada um
- * terminar e le o dataset. A conta gratuita aceita 5 runs simultaneos.
+ * por concorrente, em paralelo (ate MAX_PARALLEL), sem run-sync: dispara,
+ * espera cada um terminar e le o dataset.
  *
  * Custo medido em 01/10/2026: ~US$ 0,0045 por busca + US$ 0,001 por run.
  */
@@ -170,39 +170,48 @@ async function datasetItems(run: Run): Promise<SearchPage[]> {
  * (e o paralelismo que faz os 4 caberem no limite da rota), e devolve os
  * itens de cada um. Nao grava nada.
  */
+/**
+ * Quantos runs do Google ao mesmo tempo. A conta gratuita aceita 5 jobs
+ * simultaneos e a coleta semanal roda o Instagram em paralelo (1 job): 4
+ * deixa folga. O run mais lento (Glean, 3 buscas) domina o tempo; os
+ * outros terminam em 10-30 s e liberam vaga para o proximo da fila.
+ */
+const MAX_PARALLEL = 4;
+
+/**
+ * Busca as noticias de cada concorrente — um run por concorrente, ate
+ * MAX_PARALLEL de uma vez — e devolve os itens de cada um. Nao grava nada.
+ */
 export async function searchNews(
   slugs: string[],
   deadline: number,
 ): Promise<Map<string, { items: NewsItem[]; status: string } | { error: string }>> {
-  const started = await Promise.all(
-    slugs.map(async (slug) => {
+  const out = new Map<string, { items: NewsItem[]; status: string } | { error: string }>();
+  const queue = [...slugs];
+
+  async function worker() {
+    for (let slug = queue.shift(); slug; slug = queue.shift()) {
+      if (Date.now() >= deadline) {
+        out.set(slug, { error: "sem tempo para buscar" });
+        continue;
+      }
       const queries = NEWS_QUERIES[slug] ?? [];
       try {
-        return { slug, queries, run: await startSearch(queries) };
-      } catch (err) {
-        return { slug, queries, error: message(err) };
-      }
-    }),
-  );
-
-  const out = new Map<string, { items: NewsItem[]; status: string } | { error: string }>();
-  await Promise.all(
-    started.map(async (s) => {
-      if (!("run" in s) || !s.run) return void out.set(s.slug, { error: s.error ?? "falhou" });
-      try {
-        const run = await waitRun(s.run, deadline);
+        const run = await waitRun(await startSearch(queries), deadline);
         // TIMED-OUT ainda tem o que deu tempo de buscar; so falha sem dado.
-        const items = parseNews(await datasetItems(run), s.queries, NEWS_KEYWORDS[s.slug]);
+        const items = parseNews(await datasetItems(run), queries, NEWS_KEYWORDS[slug]);
         if (items.length === 0 && run.status !== "SUCCEEDED") {
-          out.set(s.slug, { error: `run ${run.status.toLowerCase()} sem resultados` });
+          out.set(slug, { error: `run ${run.status.toLowerCase()} sem resultados` });
         } else {
-          out.set(s.slug, { items, status: run.status });
+          out.set(slug, { items, status: run.status });
         }
       } catch (err) {
-        out.set(s.slug, { error: message(err) });
+        out.set(slug, { error: message(err) });
       }
-    }),
-  );
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(MAX_PARALLEL, slugs.length) }, worker));
   return out;
 }
 

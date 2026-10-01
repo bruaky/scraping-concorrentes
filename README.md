@@ -207,10 +207,11 @@ preenchem ao vivo, e no fim o feed e o placar recarregam.
 A rota não pede `CRON_SECRET`, porque roda no browser: ligue `LIVE_RUN` só
 para apresentar.
 
-**Só os 4 com Instagram.** O dashboard, o placar, o feed, o botão e o ingest
-mostram e coletam apenas Glean, Meuze, Bond e Strattum (`lib/tracked.ts`). Os
-outros 8 continuam no banco; a migration `0005` também os marca como
-inativos.
+**Só os 4 com Instagram, mais a Hakutaku.** O dashboard, o placar, o feed, o
+botão e o ingest mostram e coletam apenas Glean, Meuze, Bond e Strattum — e a
+própria Hakutaku (@hakutakuai), marcada como "nós" no ranking para comparar
+(`lib/tracked.ts`, migration `0007`). Os outros 8 continuam no banco; a
+migration `0005` os marca como inativos.
 
 **Competitor news.** A home mostra o que o Google acha de cada concorrente:
 posts de blog, páginas novas do site, vagas e menções em outros sites

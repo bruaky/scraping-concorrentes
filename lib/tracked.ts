@@ -18,7 +18,17 @@ export const TRACKED = [
   { slug: "bond", instagram: "bondapp.io", logo: "/logos/bond.png" },
   // https://www.instagram.com/strattum.ai/
   { slug: "strattum", instagram: "strattum.ai", logo: "/logos/strattum.svg" },
+  // Nos mesmos, no ranking para comparar. https://www.instagram.com/hakutakuai/
+  // (linkado por https://hakutaku.ai/, e o perfil linka de volta).
+  { slug: "hakutaku", instagram: "hakutakuai", logo: "/logos/hakutaku.png" },
 ] as const;
+
+/** A propria Hakutaku: aparece no ranking marcada como "nos". */
+export const SELF_SLUG = "hakutaku";
+
+export function isSelf(slug: string): boolean {
+  return slug === SELF_SLUG;
+}
 
 export const TRACKED_SLUGS: string[] = TRACKED.map((t) => t.slug);
 
@@ -69,6 +79,10 @@ export const NEWS_QUERIES: Record<string, NewsQuery[]> = {
     { kind: "site", query: "site:strattum.ai" },
     { kind: "mention", query: '"strattum.ai" -site:strattum.ai' },
   ],
+  hakutaku: [
+    { kind: "site", query: "site:hakutaku.ai" },
+    { kind: "mention", query: '"hakutaku.ai" OR "Hakutaku AI" -site:hakutaku.ai' },
+  ],
 };
 
 /**
@@ -81,4 +95,5 @@ export const NEWS_KEYWORDS: Record<string, string[]> = {
   meuze: ["meuze.ai", "meuze ai"],
   bond: ["bond"],
   strattum: ["strattum"],
+  hakutaku: ["hakutaku"],
 };
