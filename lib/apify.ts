@@ -70,7 +70,7 @@ export type Post = {
   raw: unknown;
 };
 
-function token(): string {
+export function token(): string {
   const t = process.env.APIFY_TOKEN?.trim();
   if (!t) {
     throw new Error(

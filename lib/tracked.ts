@@ -40,3 +40,45 @@ export function logoUrl(slug: string, fromDb: string | null | undefined): string
   if (fromDb) return fromDb;
   return isTracked(slug) ? `/api/logos/${slug}` : null;
 }
+
+export type NewsQuery = { kind: "blog" | "site" | "job" | "mention"; query: string };
+
+/**
+ * Buscas no Google que alimentam "Competitor news" (lib/news.ts).
+ *
+ * Calibradas numa coleta real em 01/10/2026. O nome sozinho traz ruido —
+ * "Strattum" devolve dicionario de "stratum", "Meuze" devolve a meuze.com
+ * (outra empresa) — entao mencao e vaga vao pelo dominio ou pelo nome
+ * composto, e quem nao tem pagina de vagas indexada fica sem busca de vaga.
+ */
+export const NEWS_QUERIES: Record<string, NewsQuery[]> = {
+  glean: [
+    { kind: "blog", query: "site:glean.com/blog" },
+    { kind: "job", query: "site:job-boards.greenhouse.io/gleanwork" },
+    { kind: "mention", query: '"Glean" "Work AI" -site:glean.com' },
+  ],
+  meuze: [
+    { kind: "site", query: "site:meuze.ai" },
+    { kind: "mention", query: '"meuze.ai" -site:meuze.ai' },
+  ],
+  bond: [
+    { kind: "site", query: "site:bondapp.io" },
+    { kind: "mention", query: '"Bond (YC X25)" OR "bondapp.io" -site:bondapp.io' },
+  ],
+  strattum: [
+    { kind: "site", query: "site:strattum.ai" },
+    { kind: "mention", query: '"strattum.ai" -site:strattum.ai' },
+  ],
+};
+
+/**
+ * Mencao so entra se o titulo, o trecho ou a url citar um destes termos —
+ * o Google as vezes ignora as aspas. "meuze" sozinho pega a meuze.com,
+ * outra empresa; por isso a Meuze exige o dominio.
+ */
+export const NEWS_KEYWORDS: Record<string, string[]> = {
+  glean: ["glean"],
+  meuze: ["meuze.ai", "meuze ai"],
+  bond: ["bond"],
+  strattum: ["strattum"],
+};

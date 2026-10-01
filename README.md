@@ -212,6 +212,15 @@ mostram e coletam apenas Glean, Meuze, Bond e Strattum (`lib/tracked.ts`). Os
 outros 8 continuam no banco; a migration `0005` também os marca como
 inativos.
 
+**Competitor news.** A home mostra o que o Google acha de cada concorrente:
+posts de blog, páginas novas do site, vagas e menções em outros sites
+(`lib/news.ts`, actor `apify/google-search-scraper`). As buscas de cada
+concorrente ficam em `lib/tracked.ts` (`NEWS_QUERIES`), calibradas para fugir
+de homônimos. Roda na coleta semanal (`/api/ingest/news`), no botão
+**Atualizar** da seção (com `LIVE_RUN=apify`) e em `npm run noticias`. Um run
+por concorrente, em paralelo: ~3,5 min e ~US$ 0,05 na medição de 01/10/2026.
+Precisa da migration `0006_competitor_news`.
+
 **Pelo terminal.** A coleta do botão mora em `lib/live-collect.ts`, e
 `npm run coleta` roda exatamente a mesma coisa (lê `.env.local`), imprimindo
 cada passo. `npm run coleta -- simulated` usa o plano B. Na medição de
