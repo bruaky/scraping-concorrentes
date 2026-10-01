@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --conditions=react-server --test \"lib/__tests__/*.test.ts\""
+    "test": "tsx --conditions=react-server --test \"lib/__tests__/*.test.ts\"",
+    "coleta": "tsx --conditions=react-server --env-file-if-exists=.env.local scripts/coleta-instagram.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.58.0",

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { supabaseAdmin } from "./supabase";
+import { TRACKED_SLUGS } from "./tracked";
 
 /**
  * Botão "Rodar coleta" do dashboard (/api/live/run).
@@ -93,6 +94,7 @@ export async function listTargets(): Promise<DemoTarget[]> {
     .from("competitors")
     .select("id, name, slug, instagram_handle")
     .eq("is_active", true)
+    .in("slug", TRACKED_SLUGS)
     .not("instagram_handle", "is", null)
     .order("name");
 

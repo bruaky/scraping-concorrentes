@@ -6,6 +6,7 @@ import { Scoreboard } from "./_components/scoreboard";
 import { liveRunMode } from "@/lib/live-run";
 import { fullDate } from "@/lib/format";
 import { supabaseAdmin } from "@/lib/supabase";
+import { TRACKED_SLUGS } from "@/lib/tracked";
 import type {
   CollectionRun,
   Competitor,
@@ -24,14 +25,19 @@ export default async function DashboardPage() {
   const db = supabaseAdmin();
 
   // Serie de seguidores das ultimas 10 semanas, para a tabela e os graficos
-  // da coleta. 12 concorrentes x 10 capturas fica longe do limite de linhas.
+  // da coleta. 4 concorrentes x 10 capturas fica longe do limite de linhas.
   const since10w = new Date(Date.now() - 70 * 24 * 60 * 60 * 1000).toISOString();
 
   const [competitorsRes, feedRes, scoreboardRes, runRes, historyRes] = await Promise.all([
-    db.from("competitors").select("*").eq("is_active", true).order("name"),
+    db
+      .from("competitors")
+      .select("*")
+      .eq("is_active", true)
+      .in("slug", TRACKED_SLUGS)
+      .order("name"),
     // Nivel 1: a tela inicial le SO esta view.
-    db.from("v_dashboard_feed").select("*").limit(60),
-    db.from("v_dashboard_scoreboard").select("*"),
+    db.from("v_dashboard_feed").select("*").in("competitor_slug", TRACKED_SLUGS).limit(60),
+    db.from("v_dashboard_scoreboard").select("*").in("slug", TRACKED_SLUGS),
     db.from("collection_runs").select("*").order("started_at", { ascending: false }).limit(1),
     db
       .from("instagram_profile_snapshots")
@@ -44,7 +50,8 @@ export default async function DashboardPage() {
   const feed = (feedRes.data ?? []) as DashboardFeedRow[];
   const scoreboard = (scoreboardRes.data ?? []) as DashboardScoreboardRow[];
   const lastRun = ((runRes.data ?? []) as CollectionRun[])[0];
-  const history = (historyRes.data ?? []) as LiveSnapshot[];
+  const ids = new Set(competitors.map((c) => c.id));
+  const history = ((historyRes.data ?? []) as LiveSnapshot[]).filter((s) => ids.has(s.competitor_id));
 
   const logoBySlug = new Map(competitors.map((c) => [c.slug, c.logo_url]));
 
@@ -63,8 +70,8 @@ export default async function DashboardPage() {
       {competitors.length === 0 ? (
         <Panel>
           <Empty>
-            Nenhum concorrente cadastrado. A migration <code>0001</code> já semeia os 12 — se
-            esta lista está vazia, ela ainda não foi aplicada.
+            Nenhum concorrente ativo. A migration <code>0001</code> e o baseline de 01/10 cadastram
+            Glean, Meuze, Bond e Strattum — se esta lista está vazia, eles ainda não foram aplicados.
           </Empty>
         </Panel>
       ) : null}

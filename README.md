@@ -206,3 +206,13 @@ preenchem ao vivo, e no fim o feed e o placar recarregam.
 
 A rota não pede `CRON_SECRET`, porque roda no browser: ligue `LIVE_RUN` só
 para apresentar.
+
+**Só os 4 com Instagram.** O dashboard, o placar, o feed, o botão e o ingest
+mostram e coletam apenas Glean, Meuze, Bond e Strattum (`lib/tracked.ts`). Os
+outros 8 continuam no banco; a migration `0005` também os marca como
+inativos.
+
+**Pelo terminal.** A coleta do botão mora em `lib/live-collect.ts`, e
+`npm run coleta` roda exatamente a mesma coisa (lê `.env.local`), imprimindo
+cada passo. `npm run coleta -- simulated` usa o plano B. Na medição de
+01/10/2026 os 4 perfis levaram ~3 min e custaram ~US$ 0,12 no Apify.
