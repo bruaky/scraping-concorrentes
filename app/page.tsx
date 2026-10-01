@@ -6,6 +6,7 @@ import { NewsRefresh } from "./_components/news-refresh";
 import { Empty, Panel } from "./_components/panel";
 import { Scoreboard } from "./_components/scoreboard";
 import { liveRunMode } from "@/lib/live-run";
+import { NEWS_WINDOW_DAYS } from "@/lib/news";
 import { fullDate } from "@/lib/format";
 import { supabaseAdmin } from "@/lib/supabase";
 import { TRACKED_SLUGS, instagramHandle, logoUrl } from "@/lib/tracked";
@@ -31,6 +32,7 @@ export default async function DashboardPage() {
   // Serie de seguidores das ultimas 10 semanas, para a tabela e os graficos
   // da coleta. 4 concorrentes x 10 capturas fica longe do limite de linhas.
   const since10w = new Date(Date.now() - 70 * 24 * 60 * 60 * 1000).toISOString();
+  const sinceNews = new Date(Date.now() - NEWS_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
   const [competitorsRes, feedRes, scoreboardRes, runRes, historyRes, newsRes] = await Promise.all([
     db
@@ -48,9 +50,15 @@ export default async function DashboardPage() {
       .select("competitor_id, captured_at, followers_count, posts_count")
       .gte("captured_at", since10w)
       .order("captured_at"),
-    // Competitor news (lib/news.ts). Sem a migration 0006 a tabela nao
-    // existe: o erro vira o aviso da secao, nao quebra a pagina.
-    db.from("competitor_news").select("*").order("first_seen_at", { ascending: false }).limit(80),
+    // Competitor news (lib/news.ts): so o que tem data de publicacao, dos
+    // ultimos NEWS_WINDOW_DAYS, mais recente primeiro. Sem a migration 0006
+    // a tabela nao existe: o erro vira o aviso da secao.
+    db
+      .from("competitor_news")
+      .select("*")
+      .gte("published_at", sinceNews)
+      .order("published_at", { ascending: false })
+      .limit(80),
   ]);
 
   const competitors = ((competitorsRes.data ?? []) as Competitor[]).map((c) => ({
@@ -68,18 +76,14 @@ export default async function DashboardPage() {
 
   const logoBySlug = new Map(competitors.map((c) => [c.slug, c.logo_url]));
 
-  // Mais recente primeiro pela data do Google ou, sem ela, por quando
-  // apareceu pra nos. So dos concorrentes na tela.
+  // So dos concorrentes na tela; a ordem por data ja vem do banco.
   const byId = new Map(competitors.map((c) => [c.id, c]));
   const news: NewsRow[] = ((newsRes.data ?? []) as CompetitorNews[])
     .filter((n) => byId.has(n.competitor_id))
     .map((n) => {
       const c = byId.get(n.competitor_id)!;
       return { ...n, competitor: c.name, logoUrl: c.logo_url };
-    })
-    .sort((a, b) =>
-      (b.published_at ?? b.first_seen_at).localeCompare(a.published_at ?? a.first_seen_at),
-    );
+    });
 
   // Semana 1 e toda baseline. Sem isso o primeiro acesso parece quebrado.
   // tracking_since cobre site E Instagram; primeiro_scrape so o site.
@@ -184,7 +188,8 @@ export default async function DashboardPage() {
           </Empty>
         ) : news.length === 0 ? (
           <Empty>
-            Nenhuma notícia ainda. Blog, site, vagas e menções no Google chegam na coleta semanal
+            Nada publicado nos últimos {NEWS_WINDOW_DAYS} dias. Imprensa (Google Notícias), blog,
+            site e vagas chegam na coleta semanal
             {liveRunMode() === "apify" ? " — ou clique em Atualizar" : ""}.
           </Empty>
         ) : (

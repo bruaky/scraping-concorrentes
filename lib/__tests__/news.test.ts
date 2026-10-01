@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseNews } from "../news";
+import { parseNews, parsePress } from "../news";
 import { NEWS_QUERIES, TRACKED_SLUGS } from "../tracked";
 
 const queries = [
@@ -52,31 +52,52 @@ test("todo concorrente acompanhado tem buscas de noticia", () => {
   for (const slug of TRACKED_SLUGS) assert.ok(NEWS_QUERIES[slug]?.length, slug);
 });
 
-test("mencao sem o termo do concorrente e descartada; blog e vaga nao passam pelo filtro", () => {
-  const items = parseNews(
+const press = {
+  glean: { keyword: '"Glean" AI', title: ["Glean"] },
+  strattum: { keyword: "Strattum", title: ["Strattum"] },
+};
+
+test("imprensa: cada noticia vai para o concorrente da palavra-chave, sem o ' - Fonte'", () => {
+  const out = parsePress(
     [
       {
-        searchQuery: { term: '"strattum.ai" -site:strattum.ai' },
-        organicResults: [
-          { url: "https://dictionary.cambridge.org/stratum", title: "STRATUM Definition" },
-          { url: "https://linkedin.com/posts/x", title: "Strattum AI Acquires Tropicalia" },
-        ],
+        title: "Glean Revenue 2026: $300M ARR - GetLatka",
+        url: "https://news.google.com/a",
+        source: "GetLatka",
+        publishedAt: "2026-09-28T07:00:00+00:00",
+        metadata: { keyword: '"Glean" AI' },
       },
-      { searchQuery: { term: "site:strattum.ai" }, organicResults: [{ url: "https://www.strattum.ai/x", title: "Capacity Calculator" }] },
+      {
+        title: "Strattum acqui-hires Tropicalia - Dealroom",
+        url: "https://news.google.com/b",
+        source: "Dealroom",
+        publishedAt: "2026-09-10T14:29:07+00:00",
+        metadata: { keyword: "Strattum" },
+      },
     ],
-    [
-      { kind: "mention", query: '"strattum.ai" -site:strattum.ai' },
-      { kind: "site", query: "site:strattum.ai" },
-    ],
-    ["strattum"],
+    press,
   );
-  assert.deepEqual(items.map((i) => [i.kind, i.title]), [
-    ["mention", "Strattum AI Acquires Tropicalia"],
-    ["site", "Capacity Calculator"],
+  assert.deepEqual(out.get("glean")?.map((i) => [i.kind, i.title, i.source, i.publishedAt]), [
+    ["mention", "Glean Revenue 2026: $300M ARR", "GetLatka", "2026-09-28T07:00:00.000Z"],
   ]);
+  assert.equal(out.get("strattum")?.[0].title, "Strattum acqui-hires Tropicalia");
 });
 
-test("todo concorrente com noticia tem termo de filtro", async () => {
-  const { NEWS_KEYWORDS } = await import("../tracked");
-  for (const slug of Object.keys(NEWS_QUERIES)) assert.ok(NEWS_KEYWORDS[slug]?.length, slug);
+test("imprensa: sem o nome no titulo (maiusculas importam) ou sem data, fica de fora", () => {
+  const out = parsePress(
+    [
+      // ruido real de 01/10: "glean" como verbo e artigo generico de IA
+      { title: "A surprising use for distorted data to glean hidden laws", url: "https://n/1", publishedAt: "2026-09-29T22:33:00Z", metadata: { keyword: '"Glean" AI' } },
+      { title: "5 AI Delusions That Could Derail Your Business", url: "https://n/2", publishedAt: "2026-09-30T14:03:00Z", metadata: { keyword: '"Glean" AI' } },
+      { title: "Glean sem data", url: "https://n/3", metadata: { keyword: '"Glean" AI' } },
+      { title: "Glean de palavra-chave desconhecida", url: "https://n/4", publishedAt: "2026-09-30T14:03:00Z", metadata: { keyword: "outra" } },
+    ],
+    press,
+  );
+  assert.equal(out.size, 0);
+});
+
+test("todo concorrente acompanhado tem imprensa configurada", async () => {
+  const { PRESS } = await import("../tracked");
+  for (const slug of TRACKED_SLUGS) assert.ok(PRESS[slug]?.keyword && PRESS[slug].title.length, slug);
 });
