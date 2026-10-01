@@ -11,16 +11,16 @@
  */
 export const TRACKED = [
   // https://www.instagram.com/gleanwork/
-  { slug: "glean", instagram: "gleanwork", logo: "/logos/glean.png" },
+  { slug: "glean", name: "Glean", website: "https://www.glean.com", instagram: "gleanwork", logo: "/logos/glean.png" },
   // https://www.instagram.com/meuzeai/
-  { slug: "meuze", instagram: "meuzeai", logo: "/logos/meuze.png" },
+  { slug: "meuze", name: "Meuze", website: "https://www.meuze.ai", instagram: "meuzeai", logo: "/logos/meuze.png" },
   // https://www.instagram.com/bondapp.io/
-  { slug: "bond", instagram: "bondapp.io", logo: "/logos/bond.png" },
+  { slug: "bond", name: "Bond", website: "https://www.bondapp.io", instagram: "bondapp.io", logo: "/logos/bond.png" },
   // https://www.instagram.com/strattum.ai/
-  { slug: "strattum", instagram: "strattum.ai", logo: "/logos/strattum.svg" },
+  { slug: "strattum", name: "Strattum", website: "https://www.strattum.ai", instagram: "strattum.ai", logo: "/logos/strattum.svg" },
   // Nos mesmos, no ranking para comparar. https://www.instagram.com/hakutakuai/
   // (linkado por https://hakutaku.ai/, e o perfil linka de volta).
-  { slug: "hakutaku", instagram: "hakutakuai", logo: "/logos/hakutaku.png" },
+  { slug: "hakutaku", name: "Hakutaku", website: "https://hakutaku.ai", instagram: "hakutakuai", logo: "/logos/hakutaku.png" },
 ] as const;
 
 /** A propria Hakutaku: aparece no ranking marcada como "nos". */

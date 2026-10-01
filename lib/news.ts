@@ -1,6 +1,7 @@
 import "server-only";
 
 import { actorFrom, token } from "./apify";
+import { ensureTrackedCompetitors } from "./ensure-tracked";
 import { closeRun, openRun } from "./runs";
 import { supabaseAdmin } from "./supabase";
 import { NEWS_KEYWORDS, NEWS_QUERIES, TRACKED_SLUGS, type NewsQuery } from "./tracked";
@@ -227,6 +228,7 @@ export async function collectNews(
 ): Promise<{ runId: string; results: NewsResult[] }> {
   const deadline = Date.now() + (opts.budgetMs ?? 240_000);
   const db = supabaseAdmin();
+  await ensureTrackedCompetitors();
 
   const { data: competitors, error } = await db
     .from("competitors")

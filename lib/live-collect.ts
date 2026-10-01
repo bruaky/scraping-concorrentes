@@ -1,5 +1,6 @@
 import "server-only";
 
+import { ensureTrackedCompetitors } from "./ensure-tracked";
 import { ingestCompetitor } from "./instagram";
 import {
   DEMO_JOB,
@@ -39,6 +40,7 @@ export async function runLiveCollection(
 
   try {
     if (mode === "simulated") await clearPreviousDemoRun();
+    await ensureTrackedCompetitors();
 
     const rank = (id: string) => {
       const i = order.indexOf(id);

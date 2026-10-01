@@ -33,3 +33,10 @@ test("todo logo salvo existe em public/", async () => {
 test("so a Hakutaku e marcada como nos", () => {
   assert.deepEqual(TRACKED_SLUGS.filter(isSelf), ["hakutaku"]);
 });
+
+test("toda entrada tem o que o cadastro automatico precisa", async () => {
+  const { TRACKED } = await import("../tracked");
+  for (const t of TRACKED) {
+    assert.ok(t.name && t.website.startsWith("https://") && t.instagram && t.logo, t.slug);
+  }
+});

@@ -1,4 +1,5 @@
 import { assertAuthorized, errorResponse } from "@/lib/auth";
+import { ensureTrackedCompetitors } from "@/lib/ensure-tracked";
 import { ingestCompetitor, type IngestResult } from "@/lib/instagram";
 import { closeRun, generateEvents, openRun } from "@/lib/runs";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -26,6 +27,7 @@ export async function POST(req: Request): Promise<Response> {
 
     const body = (await req.json().catch(() => ({}))) as Body;
     const db = supabaseAdmin();
+    await ensureTrackedCompetitors();
 
     let query = db
       .from("competitors")
