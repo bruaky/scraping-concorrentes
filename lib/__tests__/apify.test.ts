@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { businessCategory, num } from "../apify";
+import { actorFrom, businessCategory, num } from "../apify";
 
 /**
  * O schema guarda likes_count CRU e normaliza nas views. Estes testes
@@ -29,4 +29,11 @@ test('categoria "None" do actor vira null', () => {
   assert.equal(businessCategory("None"), null);
   assert.equal(businessCategory(undefined), null);
   assert.equal(businessCategory("Software Company"), "Software Company");
+});
+
+test("actor vazio ou ausente cai no padrao", () => {
+  assert.equal(actorFrom(undefined, "apify~x"), "apify~x");
+  assert.equal(actorFrom("", "apify~x"), "apify~x");
+  assert.equal(actorFrom("  ", "apify~x"), "apify~x");
+  assert.equal(actorFrom("outro~actor", "apify~x"), "outro~actor");
 });
