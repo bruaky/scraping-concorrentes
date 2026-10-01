@@ -48,16 +48,22 @@ app/
   api/
     cron/weekly/route.ts                Vercel Cron
     ingest/instagram/route.ts           perfil + posts + métricas
+    demo/run/route.ts                   coleta de demonstração ao vivo (NDJSON)
 lib/
   supabase.ts       client service-role, SÓ server
   apify.ts          perfil + posts, valores CRUS
   runs.ts           collection_runs + fn_generate_change_events
   pipeline.ts       orquestra as rotas de ingest
+  demo.ts           simulação usada pelo botão "Rodar coleta"
   format.ts         formatação (ausência nunca vira zero)
 supabase/migrations/
   0001_competitive_intel.sql  schema (verbatim, como aplicado)
   0002_dashboard_views.sql    views + fn_generate_change_events (verbatim)
   0003_dashboard_fixes.sql    correções — ver abaixo
+  0004_followers_title.sql    título do salto de seguidores sem espaços
+supabase/demo/
+  demo_seed.sql               9 semanas de dados FICTÍCIOS
+  demo_cleanup.sql            remove tudo que a demo gravou
 ```
 
 `0001` e `0002` estão verbatim de propósito, para poderem ser diferenciados
@@ -142,7 +148,8 @@ supabase link --project-ref <ref>
 supabase db push
 ```
 
-Se a `0001` já está aplicada no seu Supabase, só a `0003` é nova.
+Se a `0001` já está aplicada no seu Supabase, só a `0003` e a `0004` são
+novas.
 
 ### Cadastrando concorrentes
 
@@ -167,3 +174,37 @@ curl -X POST http://localhost:3000/api/ingest/instagram \
   -H "Content-Type: application/json" \
   -d '{"competitorSlug":"glean"}'
 ```
+
+## Demonstração
+
+Para apresentar o dashboard antes de ter coleta real.
+
+**1. Dados de exemplo.** Rode `supabase/demo/demo_seed.sql` no SQL Editor,
+depois das migrations. Ele preenche 9 semanas de histórico **fictício** para
+os 12 concorrentes: seguidores, posts e métricas do Instagram; preço, vagas e
+headline do site para Glean, Get Zep, Workera, Delphi AI e Strattum; posts de
+blog; e os alertas, gerados pela própria `fn_generate_change_events`, run a
+run. As datas são relativas a `now()` — rode de novo na manhã da
+apresentação (é idempotente). A Strattum traz a história da correlação: na
+última semana mexeu no preço, na home, na bio e abriu 4 vagas.
+
+O seed preenche `instagram_handle`, `website` e `logo_url` com valores de
+exemplo, e guarda os originais em `demo_competitor_backup`.
+
+**2. O botão.** Com `DEMO_MODE=1`, o topo do dashboard ganha o botão
+**Rodar coleta**. Ele chama `POST /api/demo/run`, que percorre o mesmo
+caminho da coleta real — abre o `collection_run`, grava snapshot e métricas
+por concorrente, chama `fn_generate_change_events` e fecha o run — trocando
+só a chamada ao Apify por números simulados a partir da tendência de cada
+um. A resposta vem em NDJSON, então a tabela "semana passada × hoje", as
+barras de variação e a linha do concorrente em foco vão se preenchendo ao
+vivo. No fim, o feed e o placar recarregam com os alertas novos.
+
+Cada clique apaga a rodada anterior antes de gravar: dá para ensaiar quantas
+vezes quiser.
+
+**3. Limpeza.** `supabase/demo/demo_cleanup.sql` remove tudo que o seed e o
+botão gravaram (runs `demo*`, posts `demo_*`, páginas com tag `demo`,
+eventos com `payload.demo`) e restaura os concorrentes. Desligue o
+`DEMO_MODE` antes de ligar a coleta real — os handles de exemplo não são os
+perfis verdadeiros.

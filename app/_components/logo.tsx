@@ -1,4 +1,8 @@
+"use client";
+
 /* eslint-disable @next/next/no-img-element */
+import { useEffect, useRef, useState } from "react";
+
 import { monogram } from "@/lib/format";
 
 /**
@@ -6,7 +10,8 @@ import { monogram } from "@/lib/format";
  *
  * Sem `next/image` de proposito: as logos sao URLs arbitrarias de dominios que
  * o concorrente controla, e liberar host remoto no next.config pra cada um e
- * pior do que abrir mao da otimizacao.
+ * pior do que abrir mao da otimizacao. Se a imagem nao carregar, cai no
+ * monograma em vez de mostrar o icone de imagem quebrada.
  */
 export function Logo({
   name,
@@ -17,11 +22,23 @@ export function Logo({
   src: string | null;
   size?: number;
 }) {
-  if (src) {
+  const [failed, setFailed] = useState(false);
+  const img = useRef<HTMLImageElement>(null);
+
+  // A imagem pode falhar antes da hidratacao, quando o onError ainda nao
+  // estava ligado. Na montagem, confere se ela ja chegou quebrada.
+  useEffect(() => {
+    const el = img.current;
+    if (el && el.complete && el.naturalWidth === 0) setFailed(true);
+  }, [src]);
+
+  if (src && !failed) {
     return (
       <img
         src={src}
+        ref={img}
         alt=""
+        onError={() => setFailed(true)}
         width={size}
         height={size}
         className="shrink-0 rounded-lg border border-line bg-surface object-contain"

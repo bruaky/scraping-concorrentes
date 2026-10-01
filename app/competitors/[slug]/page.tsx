@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { LineChart } from "../../_components/charts";
 import { FeedRow } from "../../_components/feed-row";
 import { Logo } from "../../_components/logo";
 import { Empty, Panel } from "../../_components/panel";
@@ -37,7 +38,7 @@ export default async function CompetitorPage({
   if (!row) notFound();
   const competitor = row as Competitor;
 
-  const [statsRes, timelineRes, feedRes, pagesRes, readinessRes] = await Promise.all([
+  const [statsRes, timelineRes, feedRes, pagesRes, readinessRes, followersRes] = await Promise.all([
     db.from("v_dashboard_scoreboard").select("*").eq("slug", slug).maybeSingle(),
     db
       .from("v_competitor_timeline")
@@ -52,6 +53,12 @@ export default async function CompetitorPage({
       .limit(30),
     db.from("tracked_pages").select("*").eq("competitor_id", competitor.id).order("page_type"),
     db.from("v_tracking_readiness").select("*").eq("slug", slug).maybeSingle(),
+    db
+      .from("instagram_profile_snapshots")
+      .select("captured_at, followers_count")
+      .eq("competitor_id", competitor.id)
+      .order("captured_at")
+      .limit(500),
   ]);
 
   const stats = statsRes.data as DashboardScoreboardRow | null;
@@ -59,6 +66,9 @@ export default async function CompetitorPage({
   const feed = (feedRes.data ?? []) as DashboardFeedRow[];
   const pages = (pagesRes.data ?? []) as TrackedPage[];
   const readiness = readinessRes.data as TrackingReadinessRow | null;
+  const followers = (followersRes.data ?? [])
+    .filter((s) => s.followers_count !== null)
+    .map((s) => ({ t: s.captured_at, v: s.followers_count as number }));
 
   return (
     <div className="space-y-10">
@@ -106,6 +116,12 @@ export default async function CompetitorPage({
       </div>
 
       {stats ? <Metrics stats={stats} /> : null}
+
+      {followers.length > 1 ? (
+        <Panel title="Seguidores no Instagram">
+          <LineChart label="Seguidores" points={followers} height={240} />
+        </Panel>
+      ) : null}
 
       {feed.length > 0 ? (
         <Panel title="Alertas" bare>
