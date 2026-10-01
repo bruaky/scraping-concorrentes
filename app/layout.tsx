@@ -10,7 +10,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR">
+    // Tema claro fixo: sem isso, o modo escuro do sistema escurece o painel.
+    <html lang="pt-BR" data-theme="light">
       <body className="min-h-screen">
         <header className="border-b border-line">
           <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
