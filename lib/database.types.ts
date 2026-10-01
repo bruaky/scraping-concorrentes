@@ -8,7 +8,7 @@
  * atribuivel a Record<string, unknown>, e interface sem index signature nao e.
  */
 
-export type Source = "firecrawl" | "apify_instagram";
+export type Source = "firecrawl" | "apify_instagram" | "apify_google";
 
 export type PageType =
   | "home"
@@ -119,6 +119,24 @@ export type PageScrape = {
   markdown_hash: string | null;
   markdown_chars: number | null;
   warning: string | null;
+  raw: Json;
+};
+
+export type NewsKind = "blog" | "site" | "job" | "mention";
+
+export type CompetitorNews = {
+  id: string;
+  competitor_id: string;
+  run_id: string | null;
+  kind: NewsKind;
+  url: string;
+  title: string | null;
+  snippet: string | null;
+  source: string | null;
+  published_at: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  query: string | null;
   raw: Json;
 };
 
@@ -346,6 +364,7 @@ export type Database = {
       page_diffs: Table<PageDiff>;
       page_field_changes: Table<PageFieldChange, FieldChangeInsert>;
       blog_posts: Table<BlogPost>;
+      competitor_news: Table<CompetitorNews>;
       instagram_profile_snapshots: Table<InstagramProfileSnapshot>;
       instagram_posts: Table<InstagramPost>;
       instagram_post_metrics: Table<InstagramPostMetric>;

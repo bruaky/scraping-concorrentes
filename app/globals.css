@@ -61,6 +61,11 @@ html {
   color-scheme: light dark;
 }
 
+/* Fixado no layout: barras de rolagem e campos do browser tambem claros. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
 body {
   background: var(--color-plane);
   color: var(--color-ink);

@@ -7,7 +7,7 @@ import "server-only";
  * custo de cada um fica separado em `collection_runs`.
  */
 export type IngestSummary = {
-  job: "instagram";
+  job: "instagram" | "news";
   ok: boolean;
   runId?: string;
   events?: number | null;
@@ -18,6 +18,7 @@ export type IngestSummary = {
 
 const ENDPOINTS = {
   instagram: "/api/ingest/instagram",
+  news: "/api/ingest/news",
 } as const;
 
 export async function runIngest(job: keyof typeof ENDPOINTS): Promise<IngestSummary> {
@@ -50,8 +51,13 @@ export async function runIngest(job: keyof typeof ENDPOINTS): Promise<IngestSumm
   }
 }
 
+/**
+ * Em paralelo: cada ingest e uma funcao propria com 300 s, mas o cron espera
+ * as duas — em sequencia, ~3 min de Instagram + ~2 min de noticias
+ * estourariam o limite dele.
+ */
 export async function runFullPipeline(): Promise<IngestSummary[]> {
-  return [await runIngest("instagram")];
+  return Promise.all([runIngest("instagram"), runIngest("news")]);
 }
 
 /** URL da propria app, para o cron chamar as rotas de ingest. */
