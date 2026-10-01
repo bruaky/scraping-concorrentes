@@ -16,9 +16,15 @@ test("concorrente fora da lista nao tem handle nem aparece", () => {
   assert.equal(isTracked("delphi-ai"), false);
 });
 
-test("logo: o do banco vale; sem ele, o salvo em public/logos", () => {
-  assert.equal(logoUrl("bond", null), "/logos/bond.png");
-  assert.equal(logoUrl("strattum", ""), "/logos/strattum.svg");
+test("logo: o do banco vale; sem ele, a rota /api/logos", () => {
+  assert.equal(logoUrl("bond", null), "/api/logos/bond");
+  assert.equal(logoUrl("strattum", ""), "/api/logos/strattum");
   assert.equal(logoUrl("glean", "https://exemplo.com/g.png"), "https://exemplo.com/g.png");
   assert.equal(logoUrl("delphi-ai", null), null);
+});
+
+test("todo logo salvo existe em public/", async () => {
+  const { existsSync } = await import("node:fs");
+  const { TRACKED } = await import("../tracked");
+  for (const t of TRACKED) assert.ok(existsSync(`public${t.logo}`), t.logo);
 });

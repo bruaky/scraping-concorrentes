@@ -32,9 +32,11 @@ export function instagramHandle(slug: string): string | null {
 }
 
 /**
- * Logo do concorrente: o do banco, ou o salvo aqui (public/logos/). Sem isso,
- * um banco sem o baseline aplicado mostra so as iniciais.
+ * Logo do concorrente: o do banco ou, sem ele, a rota /api/logos/<slug>, que
+ * aponta para o arquivo salvo em public/logos/. Sem isso, um banco sem o
+ * baseline aplicado mostra so as iniciais.
  */
 export function logoUrl(slug: string, fromDb: string | null | undefined): string | null {
-  return fromDb || TRACKED.find((t) => t.slug === slug)?.logo || null;
+  if (fromDb) return fromDb;
+  return isTracked(slug) ? `/api/logos/${slug}` : null;
 }
