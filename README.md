@@ -1,8 +1,12 @@
 # hakutaku
 
-Inteligência competitiva: varre as páginas dos concorrentes (Firecrawl) e o
-Instagram (Apify), guarda tudo no Supabase e transforma as diferenças numa
-timeline de eventos.
+Inteligência competitiva: coleta o Instagram dos concorrentes (Apify), guarda
+tudo no Supabase e transforma as diferenças numa timeline de eventos.
+
+A coleta das páginas web (Firecrawl) foi removida. As tabelas de web
+(`tracked_pages`, `page_scrapes`, `page_field_changes`…) continuam no schema,
+mas nada as alimenta hoje — as colunas de site no placar e na timeline ficam
+vazias até entrar outra fonte.
 
 ## As três telas
 
@@ -26,19 +30,10 @@ logo, monograma com as iniciais.
 ## Arquitetura
 
 ```
-Firecrawl Monitor  ──webhook──┐
-(agenda + e-mail com diffs)   │
-                              ▼
-Vercel Cron ──────────►  /api/ingest/*  ──►  Supabase  ──►  views  ──►  dashboard
-(rede de segurança)      grava dados crus      │
+Vercel Cron ──►  /api/ingest/instagram  ──►  Supabase  ──►  views  ──►  dashboard
+(semanal)        grava dados crus              │
                                                └──► fn_generate_change_events(run_id)
 ```
-
-O Monitor agenda e manda o e-mail; quando termina uma verificação, chama
-`/api/webhooks/firecrawl-monitor`, que dispara a nossa coleta. Os targets do
-Monitor são queries de busca, não as URLs de `tracked_pages` — por isso ele é
-o gatilho, e quem coleta continua sendo o nosso ingest, que é o que sustenta
-placar e timeline.
 
 A decisão do que vira alerta mora em SQL (`fn_generate_change_events`), perto
 dos dados. A aplicação grava o cru e dispara a função.
@@ -52,22 +47,26 @@ app/
   _components/                          rail, feed, placar, tiles
   api/
     cron/weekly/route.ts                Vercel Cron
-    ingest/firecrawl/route.ts           tracked_pages → page_scrapes/diffs/fields
     ingest/instagram/route.ts           perfil + posts + métricas
-    webhooks/firecrawl-monitor/route.ts gatilho do Monitor
+    live/run/route.ts                   botão "Rodar coleta" (NDJSON)
 lib/
   supabase.ts       client service-role, SÓ server
-  firecrawl.ts      scrape configurado por tracked_pages
   apify.ts          perfil + posts, valores CRUS
   runs.ts           collection_runs + fn_generate_change_events
   pipeline.ts       orquestra as rotas de ingest
+  instagram.ts      Apify → snapshot + posts + métricas
+  live-run.ts       modos do botão "Rodar coleta"
   format.ts         formatação (ausência nunca vira zero)
-scripts/
-  create-monitor.ts npm run monitor:setup
 supabase/migrations/
   0001_competitive_intel.sql  schema (verbatim, como aplicado)
   0002_dashboard_views.sql    views + fn_generate_change_events (verbatim)
   0003_dashboard_fixes.sql    correções — ver abaixo
+  0004_followers_title.sql    título do salto de seguidores sem espaços
+supabase/baseline/
+  2026-10-01_baseline.sql     ponto de partida verificado (Social Blade + sites)
+supabase/demo/
+  demo_cleanup.sql            remove o que o modo simulado gravou
+public/logos/                 logos oficiais dos concorrentes
 ```
 
 `0001` e `0002` estão verbatim de propósito, para poderem ser diferenciados
@@ -131,9 +130,6 @@ célula aparece vazia.
 e a tela mostra "baseline coletado, a comparação começa em X" em vez de um
 delta falso de zero.
 
-**`change_status` nulo não é "não mudou".** Quando o Firecrawl não consegue
-comparar, o aviso vai para `page_scrapes.warning` e nenhum evento é emitido.
-
 **Post fixado não é post da semana.** Fica fora dos eventos e das médias.
 
 **Os números vêm da versão deslogada do Instagram** e podem ser menores do que
@@ -155,9 +151,10 @@ supabase link --project-ref <ref>
 supabase db push
 ```
 
-Se a `0001` já está aplicada no seu Supabase, só a `0003` é nova.
+Se a `0001` já está aplicada no seu Supabase, só a `0003` e a `0004` são
+novas.
 
-### Cadastrando páginas
+### Cadastrando concorrentes
 
 A `0001` já semeia os 12 concorrentes com `website` e `instagram_handle`
 nulos de propósito — preencher só depois de confirmar cada um. O ingest do
@@ -167,32 +164,7 @@ Instagram pula quem não tem handle.
 update competitors
    set website = 'https://glean.com', instagram_handle = 'glean'
  where slug = 'glean';
-
-insert into tracked_pages (competitor_id, url, page_type, diff_modes,
-                           extraction_prompt, extraction_schema)
-select id, 'https://glean.com/pricing', 'pricing', '{git-diff,json}',
-       'Extraia o valor mensal de cada plano.',
-       '{"type":"object","properties":{
-           "starter_price":{"type":["string","null"]},
-           "pro_price":{"type":["string","null"]},
-           "billing_cycle":{"type":["string","null"]}}}'::jsonb
-from competitors where slug = 'glean';
 ```
-
-O schema de extração deve ser **plano**: cada campo escalar vira uma linha em
-`page_field_changes`, e o modo json do changeTracking entrega
-`previous`/`current` por campo. Para `careers`, use o campo
-`open_roles_count` — é o que o placar lê.
-
-### Firecrawl Monitor
-
-```bash
-npm run monitor:setup
-```
-
-Lê a lista de concorrentes do banco, cria (ou atualiza) o monitor com e-mail
-semanal e aponta o webhook para `/api/webhooks/firecrawl-monitor`. Rodar de
-novo depois de adicionar um concorrente.
 
 ### Disparo manual
 
@@ -200,8 +172,37 @@ novo depois de adicionar um concorrente.
 curl -X POST http://localhost:3000/api/cron/weekly \
   -H "Authorization: Bearer $CRON_SECRET"
 
-curl -X POST http://localhost:3000/api/ingest/firecrawl \
+curl -X POST http://localhost:3000/api/ingest/instagram \
   -H "Authorization: Bearer $CRON_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"competitorSlug":"glean"}'
 ```
+
+## Baseline e coleta ao vivo
+
+**Baseline real.** `supabase/baseline/2026-10-01_baseline.sql` (rodar depois
+das migrations) grava o ponto de partida verificado:
+
+- site, LinkedIn e logo oficiais dos 12 concorrentes (logos em `public/logos/`);
+- Instagram **só** de quem o site oficial linka: Glean (@gleanwork), Meuze
+  (@meuzeai), Bond (@bondapp.io) e Strattum (@strattum.ai). Os outros 8 ficam
+  "sem IG" — nenhum handle chutado;
+- seguidores, seguidos, posts e engajamento médio desses 4, lidos no Social
+  Blade em 01/10/2026. O histórico diário do Social Blade exige login, por
+  isso a série começa nesse dia.
+
+**O botão.** Com `LIVE_RUN` definido, o topo do dashboard ganha **Rodar
+coleta**. Ele chama `POST /api/live/run`, que responde em NDJSON: a tabela
+"baseline × hoje", as barras de variação e a série do concorrente em foco se
+preenchem ao vivo, e no fim o feed e o placar recarregam.
+
+- `LIVE_RUN=apify`: coleta real, pelo mesmo código do ingest semanal
+  (`lib/instagram.ts`). Gasta crédito do Apify; há um intervalo mínimo de 2
+  minutos entre runs.
+- `LIVE_RUN=simulated`: plano B sem rede. Parte do baseline real e simula a
+  captura de hoje, proporcional ao tempo decorrido. A tela mostra "simulado",
+  e cada clique apaga a rodada anterior. Para limpar de vez:
+  `supabase/demo/demo_cleanup.sql`.
+
+A rota não pede `CRON_SECRET`, porque roda no browser: ligue `LIVE_RUN` só
+para apresentar.
