@@ -12,6 +12,9 @@ import { monogram } from "@/lib/format";
  * o concorrente controla, e liberar host remoto no next.config pra cada um e
  * pior do que abrir mao da otimizacao. Se a imagem nao carregar, cai no
  * monograma em vez de mostrar o icone de imagem quebrada.
+ *
+ * O fundo da imagem e sempre claro, independente do tema: logos pretos
+ * (Bond, Meuze) sumiam sobre a superficie escura.
  */
 export function Logo({
   name,
@@ -41,8 +44,8 @@ export function Logo({
         onError={() => setFailed(true)}
         width={size}
         height={size}
-        className="shrink-0 rounded-lg border border-line bg-surface object-contain"
-        style={{ width: size, height: size }}
+        className="shrink-0 rounded-lg border border-line bg-[#fcfcfb] object-contain"
+        style={{ width: size, height: size, padding: Math.round(size * 0.1) }}
       />
     );
   }
