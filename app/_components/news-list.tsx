@@ -6,7 +6,7 @@ const KIND_LABEL: Record<NewsKind, string> = {
   blog: "Blog",
   site: "Site",
   job: "Vaga",
-  mention: "Menção",
+  mention: "Imprensa",
 };
 
 export type NewsRow = CompetitorNews & {
@@ -17,8 +17,8 @@ export type NewsRow = CompetitorNews & {
 /**
  * Uma noticia: logo, concorrente, tipo, titulo com link para a fonte.
  *
- * A data e a que o Google mostra; sem ela, a de quando a noticia apareceu
- * pra nos — e a legenda diz qual das duas e.
+ * A data e a de publicacao (Google Noticias, ou a que o Google mostra na
+ * busca). A home so lista o que tem data.
  */
 export function NewsItem({ item }: { item: NewsRow }) {
   const when = item.published_at ?? item.first_seen_at;
@@ -48,8 +48,7 @@ export function NewsItem({ item }: { item: NewsRow }) {
 
         <span className="shrink-0 text-right text-xs text-muted">
           <span className="block">{item.source}</span>
-          <span className="block" title={item.published_at ? "Data no Google" : "Quando apareceu pra nós"}>
-            {item.published_at ? "" : "visto "}
+          <span className="block" title="Data de publicação">
             {feedDate(when)}
           </span>
         </span>

@@ -51,49 +51,36 @@ export function logoUrl(slug: string, fromDb: string | null | undefined): string
   return isTracked(slug) ? `/api/logos/${slug}` : null;
 }
 
-export type NewsQuery = { kind: "blog" | "site" | "job" | "mention"; query: string };
+export type NewsQuery = { kind: "blog" | "site" | "job"; query: string };
 
 /**
- * Buscas no Google que alimentam "Competitor news" (lib/news.ts).
- *
- * Calibradas numa coleta real em 01/10/2026. O nome sozinho traz ruido —
- * "Strattum" devolve dicionario de "stratum", "Meuze" devolve a meuze.com
- * (outra empresa) — entao mencao e vaga vao pelo dominio ou pelo nome
- * composto, e quem nao tem pagina de vagas indexada fica sem busca de vaga.
+ * Buscas no Google (busca comum) que alimentam "Competitor news": blog,
+ * paginas do site e vagas — o Google costuma datar esse tipo de pagina.
+ * Calibradas numa coleta real em 01/10/2026; quem nao tem pagina de vagas
+ * indexada fica sem busca de vaga.
  */
 export const NEWS_QUERIES: Record<string, NewsQuery[]> = {
   glean: [
     { kind: "blog", query: "site:glean.com/blog" },
     { kind: "job", query: "site:job-boards.greenhouse.io/gleanwork" },
-    { kind: "mention", query: '"Glean" "Work AI" -site:glean.com' },
   ],
-  meuze: [
-    { kind: "site", query: "site:meuze.ai" },
-    { kind: "mention", query: '"meuze.ai" -site:meuze.ai' },
-  ],
-  bond: [
-    { kind: "site", query: "site:bondapp.io" },
-    { kind: "mention", query: '"Bond (YC X25)" OR "bondapp.io" -site:bondapp.io' },
-  ],
-  strattum: [
-    { kind: "site", query: "site:strattum.ai" },
-    { kind: "mention", query: '"strattum.ai" -site:strattum.ai' },
-  ],
-  hakutaku: [
-    { kind: "site", query: "site:hakutaku.ai" },
-    { kind: "mention", query: '"hakutaku.ai" OR "Hakutaku AI" -site:hakutaku.ai' },
-  ],
+  meuze: [{ kind: "site", query: "site:meuze.ai" }],
+  bond: [{ kind: "site", query: "site:bondapp.io" }],
+  strattum: [{ kind: "site", query: "site:strattum.ai" }],
+  hakutaku: [{ kind: "site", query: "site:hakutaku.ai" }],
 };
 
 /**
- * Mencao so entra se o titulo, o trecho ou a url citar um destes termos —
- * o Google as vezes ignora as aspas. "meuze" sozinho pega a meuze.com,
- * outra empresa; por isso a Meuze exige o dominio.
+ * Imprensa: Google Noticias, ultimos 30 dias, com data de publicacao.
+ *
+ * `keyword` vai para a busca; a noticia so entra se o TITULO citar um dos
+ * `title` (maiusculas importam). Sem isso, "Glean" traz "to glean hidden
+ * laws" e artigos genericos de IA, e "Bond" traz titulos de renda fixa.
  */
-export const NEWS_KEYWORDS: Record<string, string[]> = {
-  glean: ["glean"],
-  meuze: ["meuze.ai", "meuze ai"],
-  bond: ["bond"],
-  strattum: ["strattum"],
-  hakutaku: ["hakutaku"],
+export const PRESS: Record<string, { keyword: string; title: string[] }> = {
+  glean: { keyword: '"Glean" AI', title: ["Glean"] },
+  meuze: { keyword: "Meuze AI", title: ["Meuze"] },
+  bond: { keyword: '"Bond" "YC X25"', title: ["BOND (YC", "Bond (YC", "bondapp"] },
+  strattum: { keyword: "Strattum", title: ["Strattum"] },
+  hakutaku: { keyword: "Hakutaku", title: ["Hakutaku"] },
 };

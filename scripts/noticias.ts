@@ -5,8 +5,8 @@
  *   npm run noticias
  *
  * Le SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY e APIFY_TOKEN do ambiente ou do
- * .env.local. Um run do Google por concorrente, em paralelo (~1-2 min,
- * ~US$ 0,05).
+ * .env.local. Google Noticias + busca comum, em paralelo (~1 min,
+ * ~US$ 0,08).
  */
 import { collectNews } from "../lib/news";
 
