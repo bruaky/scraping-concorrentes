@@ -27,9 +27,6 @@ import { supabaseAdmin } from "./supabase";
 
 export type CollectStep = Record<string, unknown> & { type: string };
 
-/** Intervalo minimo entre dois runs no modo apify: cada um gasta credito. */
-const COOLDOWN_MS = 2 * 60 * 1000;
-
 export async function runLiveCollection(
   mode: LiveRunMode,
   send: (step: CollectStep) => void,
@@ -41,8 +38,7 @@ export async function runLiveCollection(
   const startedAt = Date.now();
 
   try {
-    if (mode === "apify") await assertCooldown();
-    else await clearPreviousDemoRun();
+    if (mode === "simulated") await clearPreviousDemoRun();
 
     const rank = (id: string) => {
       const i = order.indexOf(id);
@@ -116,22 +112,6 @@ async function collectFromApify(target: DemoTarget, runId: string): Promise<Demo
 async function simulateWithPause(target: DemoTarget, runId: string): Promise<DemoResult> {
   await new Promise((r) => setTimeout(r, 450 + Math.random() * 650));
   return simulateCompetitor(target, runId);
-}
-
-async function assertCooldown(): Promise<void> {
-  const { data } = await supabaseAdmin()
-    .from("collection_runs")
-    .select("started_at")
-    .eq("job", LIVE_JOB)
-    // run que falhou inteiro nao gastou credito: nao bloqueia o proximo
-    .neq("status", "failed")
-    .order("started_at", { ascending: false })
-    .limit(1);
-
-  const last = data?.[0]?.started_at;
-  if (last && Date.now() - Date.parse(last) < COOLDOWN_MS) {
-    throw new Error("Uma coleta acabou de rodar. Espere 2 minutos para rodar de novo.");
-  }
 }
 
 async function countEvents(runId: string): Promise<number> {

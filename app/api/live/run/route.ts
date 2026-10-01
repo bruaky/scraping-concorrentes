@@ -16,8 +16,7 @@ export const maxDuration = 300;
  * concorrente termina, em vez de esperar o run inteiro. Sem LIVE_RUN, e 404.
  *
  * Sem bearer de proposito: o botao roda no browser e nao pode carregar o
- * CRON_SECRET. O que protege e o LIVE_RUN desligado fora da apresentacao e,
- * no modo apify, o intervalo minimo entre runs.
+ * CRON_SECRET. O que protege e o LIVE_RUN desligado fora da apresentacao.
  */
 export async function POST(req: Request): Promise<Response> {
   const mode = liveRunMode();
