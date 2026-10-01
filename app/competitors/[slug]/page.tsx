@@ -8,7 +8,7 @@ import { Empty, Panel } from "../../_components/panel";
 import { Stat } from "../../_components/stat";
 import { DASH, fullDate, int, pct, shortDate, signed } from "@/lib/format";
 import { supabaseAdmin } from "@/lib/supabase";
-import { isTracked } from "@/lib/tracked";
+import { instagramHandle, isTracked } from "@/lib/tracked";
 import type {
   Competitor,
   CompetitorTimelineRow,
@@ -39,6 +39,7 @@ export default async function CompetitorPage({
   const { data: row } = await db.from("competitors").select("*").eq("slug", slug).maybeSingle();
   if (!row) notFound();
   const competitor = row as Competitor;
+  const igHandle = instagramHandle(slug) ?? competitor.instagram_handle;
 
   const [statsRes, timelineRes, feedRes, pagesRes, readinessRes, followersRes] = await Promise.all([
     db.from("v_dashboard_scoreboard").select("*").eq("slug", slug).maybeSingle(),
@@ -90,14 +91,14 @@ export default async function CompetitorPage({
                   {hostOf(competitor.website)}
                 </a>
               ) : null}
-              {competitor.instagram_handle ? (
+              {igHandle ? (
                 <a
-                  href={`https://instagram.com/${competitor.instagram_handle}`}
+                  href={`https://www.instagram.com/${igHandle}/`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-ink"
                 >
-                  @{competitor.instagram_handle}
+                  @{igHandle}
                 </a>
               ) : null}
               {competitor.linkedin_url ? (

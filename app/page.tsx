@@ -6,7 +6,7 @@ import { Scoreboard } from "./_components/scoreboard";
 import { liveRunMode } from "@/lib/live-run";
 import { fullDate } from "@/lib/format";
 import { supabaseAdmin } from "@/lib/supabase";
-import { TRACKED_SLUGS } from "@/lib/tracked";
+import { TRACKED_SLUGS, instagramHandle } from "@/lib/tracked";
 import type {
   CollectionRun,
   Competitor,
@@ -82,7 +82,7 @@ export default async function DashboardPage() {
           name: c.name,
           slug: c.slug,
           logo_url: c.logo_url,
-          handle: c.instagram_handle,
+          handle: instagramHandle(c.slug) ?? c.instagram_handle,
         }))}
         history={history}
         mode={liveRunMode()}

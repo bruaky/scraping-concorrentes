@@ -1,7 +1,7 @@
 import "server-only";
 
 import { supabaseAdmin } from "./supabase";
-import { TRACKED_SLUGS } from "./tracked";
+import { TRACKED_SLUGS, instagramHandle } from "./tracked";
 
 /**
  * Botão "Rodar coleta" do dashboard (/api/live/run).
@@ -95,17 +95,15 @@ export async function listTargets(): Promise<DemoTarget[]> {
     .select("id, name, slug, instagram_handle")
     .eq("is_active", true)
     .in("slug", TRACKED_SLUGS)
-    .not("instagram_handle", "is", null)
     .order("name");
 
   if (error) throw new Error(`Falha ao listar concorrentes: ${error.message}`);
 
-  return (data ?? []).map((c) => ({
-    id: c.id,
-    name: c.name,
-    slug: c.slug,
-    handle: c.instagram_handle as string,
-  }));
+  // O handle salvo em lib/tracked.ts vale mais que o do banco.
+  return (data ?? []).flatMap((c) => {
+    const handle = instagramHandle(c.slug) ?? c.instagram_handle;
+    return handle ? [{ id: c.id, name: c.name, slug: c.slug, handle }] : [];
+  });
 }
 
 /**
