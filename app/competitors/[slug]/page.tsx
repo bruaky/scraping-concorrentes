@@ -8,6 +8,7 @@ import { Empty, Panel } from "../../_components/panel";
 import { Stat } from "../../_components/stat";
 import { DASH, fullDate, int, pct, shortDate, signed } from "@/lib/format";
 import { supabaseAdmin } from "@/lib/supabase";
+import { isTracked } from "@/lib/tracked";
 import type {
   Competitor,
   CompetitorTimelineRow,
@@ -32,6 +33,7 @@ export default async function CompetitorPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  if (!isTracked(slug)) notFound();
   const db = supabaseAdmin();
 
   const { data: row } = await db.from("competitors").select("*").eq("slug", slug).maybeSingle();

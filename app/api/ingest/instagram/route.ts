@@ -2,6 +2,7 @@ import { assertAuthorized, errorResponse } from "@/lib/auth";
 import { ingestCompetitor, type IngestResult } from "@/lib/instagram";
 import { closeRun, generateEvents, openRun } from "@/lib/runs";
 import { supabaseAdmin } from "@/lib/supabase";
+import { TRACKED_SLUGS } from "@/lib/tracked";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +31,7 @@ export async function POST(req: Request): Promise<Response> {
       .from("competitors")
       .select("id, slug, instagram_handle")
       .eq("is_active", true)
+      .in("slug", TRACKED_SLUGS)
       // handle null = nao tem ou nao foi confirmado. Muito B2B early-stage
       // so tem LinkedIn; nao ha o que coletar.
       .not("instagram_handle", "is", null);
